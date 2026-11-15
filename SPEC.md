@@ -172,6 +172,8 @@ header and is also a tap target (§6).
 - One card per selected exercise, containing:
   - The name, and a remove button (✕) that takes the exercise out of this
     session.
+  - ▲/▼ buttons that move the card up or down in the workout. Logged sets
+    and the note move with it.
   - The **setting** field, editable inline. Edits write to the exercise, not
     the session.
   - The line "Last time (18.10.): 70×15 · 70×15 · 70×15+".

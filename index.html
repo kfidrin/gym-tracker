@@ -192,7 +192,7 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 <script>
 'use strict';
 const GOOGLE_CLIENT_ID = '239433349999-cdptvbltd2saropujjum62m48tj5pcor.apps.googleusercontent.com';
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 
 const GROUPS = [
   ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
@@ -444,6 +444,8 @@ function renderWorkout(main, cur) {
     const ex = exById(it.exercise), last = st[it.exercise];
     h += `<div class="card" data-card="${esc(it.exercise)}">
       <div class="card-head"><h3>${esc(ex ? ex.name : it.exercise)}</h3>
+        <button class="icon" data-act="move-item" data-dir="-1" data-i="${i}" aria-label="Move up"${i === 0 ? ' disabled' : ''}>▲</button>
+        <button class="icon" data-act="move-item" data-dir="1" data-i="${i}" aria-label="Move down"${i === cur.items.length - 1 ? ' disabled' : ''}>▼</button>
         <button class="icon" data-act="rm-item" data-i="${i}" aria-label="Remove from workout">✕</button></div>
       ${ex ? `<input class="field" data-f="setting" data-i="${i}" value="${esc(ex.setting)}" placeholder="Setting (machine / seat)" aria-label="Setting">` : ''}
       <div class="last">${last ? `Last time (${fmtShort(last.date)}): ${esc(fmtSets(last.item.sets))}` : 'First time'}</div>`;
@@ -682,6 +684,13 @@ document.addEventListener('click', e => {
       commit(); break;
     }
     case 'rm-item': cur.items.splice(+el.dataset.i, 1); commit(); break;
+    case 'move-item': {
+      const a = +el.dataset.i, b = a + +el.dataset.dir;
+      [cur.items[a], cur.items[b]] = [cur.items[b], cur.items[a]];
+      commit();
+      document.querySelectorAll('.card')[b].scrollIntoView({ block: 'nearest' }); // keep the moved card in view
+      break;
+    }
     case 'add-set': item.sets.push(emptySet()); commit(); break;
     case 'rm-set': item.sets.pop(); commit(); break;
     case 'plus': set.plus = !set.plus; commit(); break;
