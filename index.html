@@ -1,0 +1,993 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f6f7f9" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1115" media="(prefers-color-scheme: dark)">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Gym Tracker</title>
+<style>
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #6b7280; --line: #dfe3e8;
+  --accent: #2563eb; --accent-text: #ffffff; --accent-soft: #dbe7ff;
+  --due: #c62828; --due-soft: #fde8e7; --soon: #a35a00; --soon-soft: #fff1d1;
+  --done-soft: #e3f5e8; --ok: #15803d;
+  --tabh: 60px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115; --card: #191c22; --text: #e8eaed; --muted: #9aa0a6; --line: #2e333b;
+    --accent: #6ea8ff; --accent-text: #0b1220; --accent-soft: #1d2b45;
+    --due: #ff7b72; --due-soft: #3b1e1e; --soon: #f2b33d; --soon-soft: #3a2c12;
+    --done-soft: #16301f; --ok: #4ade80;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overflow-x: hidden;
+}
+button, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+button:disabled { cursor: default; opacity: .45; }
+
+/* Header and tab bar */
+header.top {
+  position: sticky; top: 0; z-index: 10; background: var(--bg);
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: calc(8px + env(safe-area-inset-top)) 16px 8px; border-bottom: 1px solid var(--line);
+}
+header.top h1 { margin: 0; font-size: 18px; }
+.sync {
+  min-height: 36px; padding: 4px 12px; border-radius: 18px; border: 1px solid var(--line);
+  background: var(--card); font-size: 13px; color: var(--muted); white-space: nowrap;
+}
+.sync.synced { color: var(--ok); }
+.sync.unsynced { color: var(--soon); }
+.sync.reconnect { color: var(--due); border-color: var(--due); }
+nav.tabs {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; display: flex;
+  background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom);
+}
+nav.tabs button {
+  flex: 1; height: var(--tabh); border: 0; background: none; color: var(--muted); font-size: 14px; font-weight: 600;
+}
+nav.tabs button.on { color: var(--accent); box-shadow: inset 0 3px 0 var(--accent); }
+
+main { max-width: 640px; margin: 0 auto; padding: 12px 16px calc(var(--tabh) + 96px + env(safe-area-inset-bottom)); }
+h2 { font-size: 15px; margin: 20px 0 8px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.headline { color: var(--muted); font-size: 14px; margin: 4px 0 8px; }
+.hint { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 12px 0; }
+.none { color: var(--muted); font-size: 14px; padding: 4px 2px; }
+.count { font-size: 13px; color: var(--accent); font-weight: 600; }
+
+/* Buttons */
+.btn {
+  min-height: 44px; padding: 8px 16px; border-radius: 10px; border: 1px solid var(--line);
+  background: var(--card); font-weight: 600;
+}
+.btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+.btn.danger { color: var(--due); }
+.btn.armed { background: var(--due); color: #fff; border-color: var(--due); }
+.btn.block { display: block; width: 100%; margin: 8px 0; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row > .btn { flex: 1; }
+.actionbar {
+  position: fixed; left: 0; right: 0; bottom: calc(var(--tabh) + env(safe-area-inset-bottom)); z-index: 9;
+  padding: 10px 16px; background: linear-gradient(transparent, var(--bg) 30%);
+}
+.actionbar .inner { max-width: 608px; margin: 0 auto; display: flex; gap: 8px; }
+.actionbar .btn { flex: 1; min-height: 50px; font-size: 17px; }
+.actionbar .btn.secondary { flex: 0 0 auto; }
+
+/* Plan rows */
+.ex {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; margin: 0 0 6px;
+  min-height: 56px; padding: 8px 12px; border-radius: 10px; background: var(--card);
+  border: 1px solid var(--line); border-left: 5px solid var(--line);
+}
+.ex .check {
+  flex: 0 0 24px; height: 24px; border-radius: 50%; border: 2px solid var(--line);
+  display: grid; place-items: center; font-size: 14px; color: var(--accent-text);
+}
+.ex.sel { background: var(--accent-soft); border-color: var(--accent); }
+.ex.sel .check { background: var(--accent); border-color: var(--accent); }
+.ex.sel .check::after { content: "✓"; }
+.ex .body { flex: 1; min-width: 0; }
+.ex .name { display: block; font-weight: 600; overflow-wrap: anywhere; }
+.ex .meta { display: block; font-size: 13px; color: var(--muted); }
+.ex.never .name { color: var(--muted); font-weight: 500; }
+.ex.due { border-left-color: var(--due); }
+.ex.due .since { color: var(--due); font-weight: 700; }
+.ex.soon { border-left-color: var(--soon); }
+.ex.soon .since { color: var(--soon); font-weight: 700; }
+.badge { flex: 0 0 auto; font-size: 12px; font-weight: 700; text-transform: uppercase; padding: 2px 8px; border-radius: 10px; }
+.due .badge { background: var(--due-soft); color: var(--due); }
+.soon .badge { background: var(--soon-soft); color: var(--soon); }
+
+/* Workout */
+.wk-head { display: flex; align-items: center; gap: 8px; margin: 4px 0 12px; }
+.wk-head input { min-height: 44px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin: 0 0 12px; }
+.card-head { display: flex; align-items: flex-start; gap: 8px; }
+.card-head h3 { flex: 1; margin: 6px 0 4px; font-size: 17px; overflow-wrap: anywhere; }
+.icon { flex: 0 0 44px; height: 44px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); }
+.field {
+  width: 100%; min-height: 40px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: transparent; font-size: 15px;
+}
+textarea.field { resize: none; overflow: hidden; display: block; }
+.last { color: var(--muted); font-size: 13px; margin: 6px 0 8px; }
+.set { display: flex; align-items: center; gap: 6px; padding: 4px; margin: 0 -4px 2px; border-radius: 8px; }
+.set.done { background: var(--done-soft); }
+.set .n { flex: 0 0 16px; color: var(--muted); font-size: 13px; text-align: center; }
+.set input {
+  flex: 1; min-width: 0; height: 44px; padding: 0 8px; text-align: center; font-size: 17px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--card);
+}
+.set input::placeholder { color: var(--muted); opacity: .7; }
+.set .x { color: var(--muted); }
+.set .tog { flex: 0 0 44px; height: 44px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); font-size: 18px; font-weight: 700; color: var(--muted); }
+.set .tog.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.set .tog.ok.on { background: var(--ok); border-color: var(--ok); color: var(--accent-text); }
+.set-btns { display: flex; gap: 8px; margin: 6px 0 8px; }
+.set-btns .btn { flex: 1; min-height: 40px; font-weight: 500; }
+
+/* Exercises */
+.erow { display: flex; gap: 6px; margin: 0 0 6px; }
+.erow .ename {
+  flex: 1; min-width: 0; text-align: left; min-height: 48px; padding: 6px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--card);
+}
+.erow .ename small { display: block; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+.erow .icon { flex-basis: 44px; height: auto; min-height: 48px; }
+details.arch { margin-top: 24px; }
+details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
+.form label { display: block; font-weight: 600; font-size: 14px; margin: 14px 0 4px; }
+.form .field { font-size: 16px; min-height: 44px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { min-height: 40px; padding: 4px 14px; border-radius: 20px; border: 1px solid var(--line); background: var(--card); }
+.chip.on { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.err { color: var(--due); font-size: 14px; }
+.small { font-size: 13px; color: var(--muted); }
+
+/* Settings */
+.kv { margin: 4px 0; font-size: 15px; overflow-wrap: anywhere; }
+.kv span { color: var(--muted); }
+.confirm { border: 1px solid var(--due); border-radius: 10px; padding: 12px; margin: 8px 0; }
+
+/* Modal and toast */
+#modal { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.5); display: grid; place-items: center; padding: 16px; }
+#modal[hidden] { display: none; }
+#modal .sheet { background: var(--card); border-radius: 14px; padding: 16px; max-width: 420px; width: 100%; }
+#modal h2 { margin-top: 0; }
+#toast {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabh) + 84px); z-index: 40;
+  background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px;
+  max-width: calc(100% - 32px); opacity: 0; pointer-events: none; transition: opacity .2s;
+}
+#toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Gym Tracker</h1>
+  <button id="sync" class="sync" data-act="sync-tap">local only</button>
+</header>
+<main id="main"></main>
+<nav class="tabs">
+  <button data-act="tab" data-tab="plan" id="tab-plan">Plan</button>
+  <button data-act="tab" data-tab="exercises">Exercises</button>
+  <button data-act="tab" data-tab="settings">Settings</button>
+</nav>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+<div id="modal" hidden><div class="sheet"></div></div>
+<div id="toast" role="status"></div>
+<script>
+'use strict';
+const GOOGLE_CLIENT_ID = 'YOUR_CLIENT_ID.apps.googleusercontent.com';
+const APP_VERSION = '1.0.0';
+
+const GROUPS = [
+  ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
+  ['biceps', 'Biceps'], ['triceps', 'Triceps'], ['abs', 'Abs'],
+];
+const LS_DATA = 'gym.data', LS_DIRTY = 'gym.dirty';
+
+// ================= Helpers =================
+const $ = s => document.querySelector(s);
+const isObj = v => v !== null && typeof v === 'object' && !Array.isArray(v);
+const arr = v => Array.isArray(v) ? v : [];
+const str = v => typeof v === 'string' ? v : (v == null ? '' : String(v));
+const esc = v => str(v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const validDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
+
+// Parses "12,5", "12.5", 12.5 → 12.5; empty or invalid → null.
+function num(v) {
+  if (typeof v === 'string') { v = v.trim().replace(',', '.'); if (!v) return null; }
+  if (v === null || v === undefined || v === '' || typeof v === 'boolean') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+const int = v => { const n = num(v); return n === null ? null : Math.round(n); };
+const nonNegInt = v => { const n = int(v); return n === null || n < 0 ? null : n; };
+const fmtNum = n => n == null ? '' : String(n);
+
+function today() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+const fmtDate = iso => { const [y, m, d] = iso.split('-'); return `${d}.${m}.${y}`; };
+const fmtShort = iso => { const [, m, d] = iso.split('-'); return `${d}.${m}.`; };
+function daysAgo(iso) {
+  const utc = s => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  const n = Math.round((utc(today()) - utc(iso)) / 86400000);
+  return n === 0 ? 'today' : n === 1 ? 'yesterday' : n < 0 ? 'in the future' : `${n} days ago`;
+}
+function slugify(name) {
+  return name.normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'exercise';
+}
+function fmtSets(sets) {
+  return sets.map(s => (s.weight != null ? `${fmtNum(s.weight)}×` : '') + (s.reps != null ? s.reps : '–') + (s.plus ? '+' : '')).join(' · ');
+}
+
+// ================= Data model =================
+// Known keys come first in a fixed order; unknown fields from hand edits are kept after them.
+function withExtras(known, src, skip = []) {
+  if (isObj(src)) for (const k of Object.keys(src)) if (!(k in known) && !skip.includes(k)) known[k] = src[k];
+  return known;
+}
+
+// Turns anything (hand-edited file, old local copy, nothing) into a valid data object.
+function normalize(raw) {
+  raw = isObj(raw) ? raw : {};
+  const exercises = [], ids = new Set();
+  for (const e of arr(raw.exercises)) {
+    if (!isObj(e)) continue;
+    const id = str(e.id).trim() || slugify(str(e.name));
+    if (ids.has(id)) continue;
+    ids.add(id);
+    exercises.push(withExtras({
+      id, name: str(e.name).trim() || id, setting: str(e.setting),
+      maxSkip: nonNegInt(e.maxSkip), archived: e.archived === true,
+    }, e));
+  }
+  const rawGroups = arr(raw.groups).filter(isObj);
+  const groups = GROUPS.map(([id, name]) => {
+    const g = rawGroups.find(x => x.id === id) || {};
+    const list = [];
+    for (const x of arr(g.exercises)) if (ids.has(x) && !list.includes(x)) list.push(x);
+    return withExtras({ id, name, exercises: list }, g);
+  });
+  const rawSessions = arr(raw.sessions).filter(isObj);
+  let openIdx = -1; // at most one in-progress session: the last one wins
+  rawSessions.forEach((s, i) => { if (s.finished === false) openIdx = i; });
+  const sessions = rawSessions.map((s, i) => {
+    const finished = i !== openIdx, date = validDate(s.date) || today();
+    return withExtras({
+      id: str(s.id) || newSessionId(date), date, finished,
+      items: arr(s.items).filter(it => isObj(it) && str(it.exercise)).map(it => withExtras({
+        exercise: str(it.exercise), note: str(it.note),
+        sets: arr(it.sets).filter(isObj).map(st => {
+          const o = { weight: num(st.weight), reps: int(st.reps), plus: st.plus === true };
+          if (!finished) o.done = st.done === true; // UI state, only while in progress
+          return withExtras(o, st, ['done']);
+        }),
+      }, it)),
+    }, s);
+  });
+  sortSessions(sessions);
+  return withExtras({
+    format: 'gym-tracker', version: 1, updatedAt: str(raw.updatedAt) || new Date().toISOString(),
+    groups, exercises, sessions,
+  }, raw);
+}
+const sortSessions = list => list.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0); // stable
+const serialize = d => JSON.stringify(normalize(d), null, 2) + '\n';
+const newSessionId = date => `${date}-${Math.random().toString(16).slice(2, 6)}`;
+
+function loadLocal() {
+  try { return normalize(JSON.parse(localStorage.getItem(LS_DATA))); } catch { return normalize({}); }
+}
+
+let data = loadLocal();
+let changeSeq = 0;
+const isDirty = () => localStorage.getItem(LS_DIRTY) === '1';
+const setDirty = v => localStorage.setItem(LS_DIRTY, v ? '1' : '0');
+
+// Call after every change to `data`: saves locally, marks dirty, schedules a push.
+function commit({ render: doRender = true } = {}) {
+  data.updatedAt = new Date().toISOString();
+  localStorage.setItem(LS_DATA, serialize(data));
+  changeSeq++;
+  setDirty(true);
+  Drive.schedulePush();
+  doRender ? render() : renderChrome();
+}
+function replaceData(raw, dirty) {
+  data = normalize(raw);
+  localStorage.setItem(LS_DATA, serialize(data));
+  changeSeq++;
+  setDirty(dirty);
+  render();
+}
+
+// ================= Derived values =================
+const exById = id => data.exercises.find(e => e.id === id);
+const groupById = id => data.groups.find(g => g.id === id);
+const finishedSessions = () => data.sessions.filter(s => s.finished);
+const current = () => data.sessions.find(s => !s.finished);
+
+// exercise id → { since, item, date } from the most recent finished session containing it
+function stats() {
+  const fin = finishedSessions(), m = {};
+  fin.forEach((s, i) => s.items.forEach(it => { m[it.exercise] = { since: fin.length - 1 - i, item: it, date: s.date }; }));
+  return m;
+}
+function statusOf(ex, st) {
+  if (!st) return 'never';
+  if (ex.maxSkip == null) return 'ok';
+  if (st.since >= ex.maxSkip) return 'due';
+  if (st.since === ex.maxSkip - 1) return 'soon';
+  return 'ok';
+}
+const sinceLabel = st => !st ? 'never' : st.since === 0 ? 'last session' : st.since === 1 ? '1 session ago' : `${st.since} sessions ago`;
+const visibleIds = g => g.exercises.filter(id => { const e = exById(id); return e && !e.archived; });
+
+function newItem(id, st) {
+  const last = st[id], n = last && last.item.sets.length ? last.item.sets.length : 3;
+  return { exercise: id, note: '', sets: Array.from({ length: n }, emptySet) };
+}
+const emptySet = () => ({ weight: null, reps: null, plus: false, done: false });
+// Placeholder for set j: last time's set j, or last time's final set if there were fewer.
+function placeholder(st, id, j) {
+  const sets = st[id] ? st[id].item.sets : [];
+  return sets.length ? sets[Math.min(j, sets.length - 1)] : null;
+}
+
+// ================= UI =================
+const ui = { tab: 'plan', sel: [], adding: false, form: null, archOpen: false, importPending: null };
+
+function render() {
+  const main = $('#main');
+  if (ui.tab === 'plan') { const cur = current(); cur && !ui.adding ? renderWorkout(main, cur) : renderPlan(main); }
+  else if (ui.tab === 'exercises') ui.form ? renderForm(main) : renderExercises(main);
+  else renderSettings(main);
+  main.querySelectorAll('textarea.field').forEach(autoGrow);
+  renderChrome();
+}
+function renderChrome() {
+  const labels = { local: 'local only', synced: 'synced ✓', unsynced: 'unsynced ●', syncing: 'syncing ⟳', reconnect: 'reconnect ⚠' };
+  const s = Drive.status, el = $('#sync');
+  el.className = 'sync ' + s;
+  el.textContent = s === 'reconnect' ? 'tap to reconnect ⚠' : labels[s];
+  $('#tab-plan').textContent = current() ? 'Workout' : 'Plan';
+  document.querySelectorAll('nav.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === ui.tab));
+}
+function autoGrow(t) { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; }
+
+let toastTimer;
+function toast(msg) {
+  const t = $('#toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2500);
+}
+function modal(html) {
+  const m = $('#modal');
+  m.hidden = !html;
+  m.firstElementChild.innerHTML = html || '';
+}
+// First tap arms the button, second tap within 4 s confirms.
+function confirmTap(btn, label) {
+  if (btn.dataset.armed) return true;
+  const old = btn.textContent;
+  btn.dataset.armed = '1'; btn.textContent = label; btn.classList.add('armed');
+  setTimeout(() => { delete btn.dataset.armed; btn.textContent = old; btn.classList.remove('armed'); }, 4000);
+  return false;
+}
+
+// ---------- Plan ----------
+function renderPlan(main) {
+  const st = stats(), cur = current();
+  const inWorkout = new Set(cur ? cur.items.map(i => i.exercise) : []);
+  let h = '';
+  if (ui.adding) h += `<div class="headline">Add exercises to the workout</div>`;
+  else {
+    const fin = finishedSessions(), last = fin[fin.length - 1];
+    h += `<div class="headline">${last ? `Last session: ${fmtDate(last.date)} · ${daysAgo(last.date)}` : 'No sessions yet'}</div>`;
+  }
+  if (!data.exercises.some(e => !e.archived)) {
+    h += `<div class="hint">No exercises yet. Add your own on the <b>Exercises</b> tab, or start with the starter list.
+      <button class="btn primary block" data-act="starter">Load starter exercises</button></div>`;
+  }
+  for (const g of data.groups) {
+    const ids = visibleIds(g), n = ids.filter(id => ui.sel.includes(id)).length;
+    h += `<section data-group="${g.id}"><h2>${esc(g.name)}<span class="count">${n ? `${n} selected` : ''}</span></h2>`;
+    if (!ids.length) h += `<div class="none">No exercises</div>`;
+    for (const id of ids) {
+      const ex = exById(id), s = st[id], status = statusOf(ex, s), inW = inWorkout.has(id);
+      const also = data.groups.filter(o => o !== g && o.exercises.includes(id)).map(o => o.name).join(', ');
+      const meta = [`<span class="since">${sinceLabel(s)}</span>`];
+      if (ex.maxSkip != null) meta.push(`max ${ex.maxSkip}`);
+      if (also) meta.push(`also ${esc(also)}`);
+      if (inW) meta.push('in workout');
+      h += `<button class="ex ${status}${ui.sel.includes(id) ? ' sel' : ''}" data-act="toggle" data-id="${esc(id)}"${inW ? ' disabled' : ''}>
+        <span class="check"></span>
+        <span class="body"><span class="name">${esc(ex.name)}</span><span class="meta">${meta.join(' · ')}</span></span>
+        ${status === 'due' || status === 'soon' ? `<span class="badge">${status}</span>` : ''}
+      </button>`;
+    }
+    h += `</section>`;
+  }
+  const n = ui.sel.length;
+  h += ui.adding
+    ? `<div class="actionbar"><div class="inner"><button class="btn secondary" data-act="add-cancel">Cancel</button>
+        <button class="btn primary" data-act="add-confirm"${n ? '' : ' disabled'}>Add to workout (${n})</button></div></div>`
+    : `<div class="actionbar"><div class="inner"><button class="btn primary" data-act="start"${n ? '' : ' disabled'}>Start workout (${n})</button></div></div>`;
+  main.innerHTML = h;
+}
+
+// ---------- Workout ----------
+function renderWorkout(main, cur) {
+  const st = stats();
+  let h = `<div class="wk-head"><label for="wk-date"><b>Workout</b></label>
+    <input type="date" id="wk-date" data-f="date" value="${cur.date}"></div>`;
+  if (!cur.items.length) h += `<div class="hint">No exercises in this workout.</div>`;
+  cur.items.forEach((it, i) => {
+    const ex = exById(it.exercise), last = st[it.exercise];
+    h += `<div class="card" data-card="${esc(it.exercise)}">
+      <div class="card-head"><h3>${esc(ex ? ex.name : it.exercise)}</h3>
+        <button class="icon" data-act="rm-item" data-i="${i}" aria-label="Remove from workout">✕</button></div>
+      ${ex ? `<input class="field" data-f="setting" data-i="${i}" value="${esc(ex.setting)}" placeholder="Setting (machine / seat)" aria-label="Setting">` : ''}
+      <div class="last">${last ? `Last time (${fmtShort(last.date)}): ${esc(fmtSets(last.item.sets))}` : 'First time'}</div>`;
+    it.sets.forEach((s, j) => {
+      const ph = placeholder(st, it.exercise, j);
+      const phW = ph ? (ph.weight != null ? fmtNum(ph.weight) : 'BW') : 'kg';
+      const phR = ph && ph.reps != null ? ph.reps : 'reps';
+      h += `<div class="set${s.done ? ' done' : ''}">
+        <span class="n">${j + 1}</span>
+        <input inputmode="decimal" autocomplete="off" data-f="weight" data-i="${i}" data-j="${j}" value="${fmtNum(s.weight)}" placeholder="${phW}" aria-label="Weight set ${j + 1}">
+        <span class="x">×</span>
+        <input inputmode="numeric" autocomplete="off" data-f="reps" data-i="${i}" data-j="${j}" value="${fmtNum(s.reps)}" placeholder="${phR}" aria-label="Reps set ${j + 1}">
+        <button class="tog${s.plus ? ' on' : ''}" data-act="plus" data-i="${i}" data-j="${j}" aria-pressed="${s.plus}" aria-label="More reps possible">+</button>
+        <button class="tog ok${s.done ? ' on' : ''}" data-act="done" data-i="${i}" data-j="${j}" aria-pressed="${s.done}" aria-label="Set done">✓</button>
+      </div>`;
+    });
+    h += `<div class="set-btns"><button class="btn" data-act="add-set" data-i="${i}">+ Set</button>
+        <button class="btn" data-act="rm-set" data-i="${i}"${it.sets.length > 1 ? '' : ' disabled'}>− Set</button></div>
+      <textarea class="field" rows="1" data-f="note" data-i="${i}" placeholder="Note" aria-label="Note">${esc(it.note)}</textarea>
+    </div>`;
+  });
+  h += `<button class="btn block" data-act="add-ex">+ Add exercise</button>
+    <button class="btn block danger" data-act="discard">Discard workout</button>
+    <div class="actionbar"><div class="inner"><button class="btn primary" data-act="finish">Finish workout</button></div></div>`;
+  main.innerHTML = h;
+}
+
+function finishWorkout() {
+  const cur = current();
+  for (const it of cur.items) it.sets = it.sets.filter(s => s.done || s.weight != null || s.reps != null);
+  cur.items = cur.items.filter(it => it.sets.length);
+  if (!cur.items.length) {
+    data.sessions.splice(data.sessions.indexOf(cur), 1);
+    toast('Nothing logged — workout discarded');
+  } else {
+    cur.finished = true;
+    for (const it of cur.items) for (const s of it.sets) delete s.done;
+    toast('Workout saved');
+  }
+  ui.sel = []; ui.adding = false;
+  commit();
+  Drive.pushNow();
+  window.scrollTo(0, 0);
+}
+
+// ---------- Exercises ----------
+function renderExercises(main) {
+  let h = `<button class="btn primary block" data-act="new-ex">+ New exercise</button>`;
+  const exRow = (ex, gid, first, lastRow) => `<div class="erow">
+      <button class="ename" data-act="edit-ex" data-id="${esc(ex.id)}">${esc(ex.name)}${ex.setting ? `<small>${esc(ex.setting)}</small>` : ''}</button>
+      ${gid ? `<button class="icon" data-act="move" data-dir="-1" data-g="${gid}" data-id="${esc(ex.id)}" aria-label="Move up"${first ? ' disabled' : ''}>▲</button>
+      <button class="icon" data-act="move" data-dir="1" data-g="${gid}" data-id="${esc(ex.id)}" aria-label="Move down"${lastRow ? ' disabled' : ''}>▼</button>` : ''}
+    </div>`;
+  for (const g of data.groups) {
+    const ids = visibleIds(g);
+    h += `<section data-group="${g.id}"><h2>${esc(g.name)}<span class="small">${ids.length}</span></h2>`;
+    if (!ids.length) h += `<div class="none">No exercises</div>`;
+    ids.forEach((id, k) => { h += exRow(exById(id), g.id, k === 0, k === ids.length - 1); });
+    h += `</section>`;
+  }
+  const grouped = new Set(data.groups.flatMap(g => g.exercises));
+  const loose = data.exercises.filter(e => !e.archived && !grouped.has(e.id));
+  if (loose.length) h += `<h2>No group</h2>` + loose.map(e => exRow(e)).join('');
+  const archived = data.exercises.filter(e => e.archived);
+  h += `<details class="arch" data-act-toggle="arch"${ui.archOpen ? ' open' : ''}><summary>Archived (${archived.length})</summary>
+    ${archived.map(e => exRow(e)).join('') || '<div class="none">None</div>'}</details>`;
+  main.innerHTML = h;
+}
+
+function move(gid, id, dir) {
+  const list = groupById(gid).exercises, vis = visibleIds(groupById(gid));
+  const other = vis[vis.indexOf(id) + dir];
+  if (!other) return;
+  const a = list.indexOf(id), b = list.indexOf(other);
+  [list[a], list[b]] = [list[b], list[a]];
+  commit();
+}
+
+function renderForm(main) {
+  const f = ui.form, ex = f.id ? exById(f.id) : null;
+  const inGroup = gid => ex ? groupById(gid).exercises.includes(ex.id) : false;
+  main.innerHTML = `<div class="form">
+    <h2>${ex ? 'Edit exercise' : 'New exercise'}</h2>
+    <label for="f-name">Name</label>
+    <input class="field" id="f-name" value="${esc(ex ? ex.name : '')}" autocomplete="off">
+    <label>Muscle groups</label>
+    <div class="chips">${data.groups.map(g => `<button class="chip${inGroup(g.id) ? ' on' : ''}" data-act="chip" data-g="${g.id}" aria-pressed="${inGroup(g.id)}">${esc(g.name)}</button>`).join('')}</div>
+    <label for="f-max">Max skip (sessions, optional)</label>
+    <input class="field" id="f-max" inputmode="numeric" value="${ex ? fmtNum(ex.maxSkip) : ''}" placeholder="no limit" autocomplete="off">
+    <label for="f-setting">Setting</label>
+    <input class="field" id="f-setting" value="${esc(ex ? ex.setting : '')}" placeholder="e.g. Seat 5; top 1" autocomplete="off">
+    <p class="err" id="f-err"></p>
+    <div class="row"><button class="btn" data-act="form-cancel">Cancel</button><button class="btn primary" data-act="form-save">Save</button></div>
+    ${ex ? `<button class="btn block" data-act="form-archive">${ex.archived ? 'Unarchive' : 'Archive'}</button>` : ''}
+  </div>`;
+  if (!ex) $('#f-name').focus();
+}
+
+function saveForm() {
+  const name = $('#f-name').value.trim(), setting = $('#f-setting').value.trim();
+  const groups = [...document.querySelectorAll('.chip.on')].map(c => c.dataset.g);
+  const maxRaw = $('#f-max').value.trim(), maxSkip = nonNegInt(maxRaw);
+  const err = msg => { $('#f-err').textContent = msg; };
+  if (!name) return err('Name is required.');
+  if (!groups.length) return err('Pick at least one muscle group.');
+  if (maxRaw && maxSkip === null) return err('Max skip must be a whole number.');
+  let ex = ui.form.id ? exById(ui.form.id) : null;
+  if (!ex) {
+    let id = slugify(name), k = 2;
+    while (exById(id)) id = `${slugify(name)}-${k++}`;
+    ex = { id, name, setting, maxSkip, archived: false };
+    data.exercises.push(ex);
+  } else Object.assign(ex, { name, setting, maxSkip });
+  for (const g of data.groups) {
+    const has = g.exercises.includes(ex.id), want = groups.includes(g.id);
+    if (want && !has) g.exercises.push(ex.id);
+    if (!want && has) g.exercises.splice(g.exercises.indexOf(ex.id), 1);
+  }
+  ui.form = null;
+  commit();
+}
+
+// ---------- Starter exercises (§7) ----------
+const STARTER = [
+  ['Shoulders', 'Lateral Raise Machine', 'Bottom 4, top 4'], ['Shoulders', 'DB Lateral Raise', ''],
+  ['Shoulders', 'Shoulder Press', 'Top 5'], ['Shoulders, Back', 'Face Pulls', 'Very top; D = double, H = hammer'],
+  ['Shoulders, Back', 'Reverse Butterfly', 'Bottom 5'], ['Shoulders', 'Cable Crossover (rear)', 'Top 8'],
+  ['Chest', 'Chest Press (B)', 'Bottom 5'], ['Chest', 'Cable Chest (high)', 'Top'],
+  ['Chest', 'Cable Chest (low)', 'From below'], ['Chest', 'Butterfly', 'Top 1, bottom 8'],
+  ['Chest', 'Incline Bench Press (G)', 'Bottom 8'], ['Chest', 'Decline Chest Machine', 'Middle, narrow grip'],
+  ['Chest', 'Chest Fixator (B)', 'ca. 5'], ['Chest', 'DB Incline Press', ''],
+  ['Chest', 'Bench Press BB', 'Wide grip'], ['Chest', 'Push Ups', ''],
+  ['Chest, Triceps', 'Seated Dip', 'Bottom 8'], ['Back, Legs', 'Deadlift', 'Rack 12'],
+  ['Back', 'Lat Pulldown', 'Exactly middle'], ['Back', 'Low Row', ''],
+  ['Back', 'Row Machine', 'Lower grip'], ['Back', 'Gravitron', ''],
+  ['Back', 'Lat Pulley (B)', 'Between 3 and 4, back upright'], ['Back', 'Ground Base Combo Decline (H)', ''],
+  ['Back', 'One-Arm Row', 'Exactly middle'], ['Back', 'Back Extension', 'No hyper, very bottom'],
+  ['Back', 'Hex Shrugs', ''], ['Legs', 'Squat', 'Top 5, bottom 14'],
+  ['Legs', 'Leg Press', ''], ['Legs', 'Lunges BB', ''],
+  ['Legs', 'Hamstring Curl Seated', 'Back 1, front 4'], ['Legs', 'Glute Machine', 'Top 5'],
+  ['Legs', 'Abduction (B)', ''], ['Legs', 'Adduction', ''],
+  ['Legs', 'Leg Extension', ''], ['Legs', 'Calves', '6'],
+  ['Legs', 'Hip Thrust Machine', ''], ['Biceps', 'Biceps Curl (DB/SZ)', ''],
+  ['Biceps', 'Biceps Machine', 'Bottom 3 / G5'], ['Triceps', 'Triceps Cable / SZ', ''],
+  ['Triceps', 'Triceps Rope (low)', ''], ['Abs', 'Abs', ''],
+  ['Abs', 'Woodchoppers', 'Bottom 12'],
+];
+function loadStarter() {
+  const names = new Set(data.exercises.map(e => e.name.toLowerCase()));
+  let added = 0;
+  for (const [groups, name, setting] of STARTER) {
+    if (names.has(name.toLowerCase())) continue;
+    let id = slugify(name), k = 2;
+    while (exById(id)) id = `${slugify(name)}-${k++}`;
+    data.exercises.push({ id, name, setting, maxSkip: null, archived: false });
+    for (const gname of groups.split(', ')) data.groups.find(g => g.name === gname).exercises.push(id);
+    added++;
+  }
+  if (added) commit();
+  toast(added ? `Added ${added} exercises` : 'All starter exercises already exist');
+}
+
+// ---------- Settings ----------
+function renderSettings(main) {
+  const d = Drive.info(), p = ui.importPending;
+  let drive;
+  if (!d.configured) drive = `<p class="kv">Not configured. Set <code>GOOGLE_CLIENT_ID</code> in index.html (see SETUP.md). The app works fully without it.</p>`;
+  else drive = `<p class="kv"><span>Status:</span> ${d.connected ? (d.hasToken ? 'connected' : 'connected, sign-in expired') : 'not connected'}</p>
+    <p class="kv"><span>Last sync:</span> ${d.lastSync ? new Date(d.lastSync).toLocaleString() : '—'}</p>
+    ${d.lastError ? `<p class="kv err">Last error: ${esc(d.lastError)}</p>` : ''}
+    <div class="row">${d.connected
+      ? `<button class="btn primary" data-act="drive-sync">${d.hasToken ? 'Sync now' : 'Reconnect'}</button><button class="btn" data-act="drive-disconnect">Disconnect</button>`
+      : `<button class="btn primary" data-act="drive-connect">Connect</button>`}</div>`;
+  main.innerHTML = `<h2>Google Drive</h2><div class="card">${drive}</div>
+    <h2>Data</h2><div class="card">
+      <p class="small">${data.exercises.length} exercises · ${finishedSessions().length} sessions</p>
+      <button class="btn block" data-act="export">Export JSON</button>
+      <button class="btn block" data-act="import">Import JSON</button>
+      ${p ? `<div class="confirm"><p>Replace all local data with <b>${esc(p.name)}</b>
+          (${p.data.exercises.length} exercises, ${p.data.sessions.length} sessions)?</p>
+        <div class="row"><button class="btn" data-act="import-cancel">Cancel</button>
+        <button class="btn primary" data-act="import-confirm">Replace local data</button></div></div>` : ''}
+      <button class="btn block" data-act="starter">Load starter exercises</button>
+    </div>
+    <p class="small">Gym Tracker v${APP_VERSION}</p>`;
+}
+
+function exportJson() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([serialize(data)], { type: 'application/json' }));
+  a.download = `gym-${today()}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+$('#importFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const raw = JSON.parse(await file.text());
+    if (!isObj(raw) || (raw.format && raw.format !== 'gym-tracker')) throw new Error('not a gym-tracker file');
+    ui.importPending = { name: file.name, raw, data: normalize(raw) };
+    render();
+  } catch (err) { toast(`Import failed: ${err.message}`); }
+});
+
+// ---------- Events ----------
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]');
+  if (!el || el.disabled) return;
+  const act = el.dataset.act, cur = current();
+  const item = el.dataset.i != null && cur ? cur.items[+el.dataset.i] : null;
+  const set = item && el.dataset.j != null ? item.sets[+el.dataset.j] : null;
+  switch (act) {
+    case 'tab':
+      ui.tab = el.dataset.tab;
+      if (ui.tab !== 'settings') ui.importPending = null;
+      render(); window.scrollTo(0, 0); break;
+    case 'sync-tap': Drive.tap(); break;
+    case 'toggle': {
+      const id = el.dataset.id, k = ui.sel.indexOf(id);
+      k < 0 ? ui.sel.push(id) : ui.sel.splice(k, 1);
+      render(); break;
+    }
+    case 'start':
+      data.sessions.push({ id: newSessionId(today()), date: today(), finished: false, items: ui.sel.map(id => newItem(id, stats())) });
+      sortSessions(data.sessions);
+      ui.sel = [];
+      commit(); window.scrollTo(0, 0); break;
+    case 'add-ex': ui.adding = true; ui.sel = []; render(); window.scrollTo(0, 0); break;
+    case 'add-cancel': ui.adding = false; ui.sel = []; render(); break;
+    case 'add-confirm': {
+      const st = stats();
+      cur.items.push(...ui.sel.map(id => newItem(id, st)));
+      ui.adding = false; ui.sel = [];
+      commit(); break;
+    }
+    case 'rm-item': cur.items.splice(+el.dataset.i, 1); commit(); break;
+    case 'add-set': item.sets.push(emptySet()); commit(); break;
+    case 'rm-set': item.sets.pop(); commit(); break;
+    case 'plus': set.plus = !set.plus; commit(); break;
+    case 'done':
+      if (set.done) set.done = false;
+      else {
+        const ph = placeholder(stats(), item.exercise, +el.dataset.j);
+        if (ph && set.weight == null) set.weight = ph.weight;
+        if (ph && set.reps == null) set.reps = ph.reps;
+        set.done = true;
+      }
+      commit(); break;
+    case 'finish': finishWorkout(); break;
+    case 'discard':
+      if (!confirmTap(el, 'Tap again to discard')) break;
+      data.sessions.splice(data.sessions.indexOf(cur), 1);
+      ui.adding = false; ui.sel = [];
+      commit(); toast('Workout discarded'); break;
+    case 'starter': loadStarter(); break;
+    case 'new-ex': ui.form = { id: null }; render(); window.scrollTo(0, 0); break;
+    case 'edit-ex': ui.form = { id: el.dataset.id }; render(); window.scrollTo(0, 0); break;
+    case 'move': move(el.dataset.g, el.dataset.id, +el.dataset.dir); break;
+    case 'chip': el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on')); break;
+    case 'form-cancel': ui.form = null; render(); break;
+    case 'form-save': saveForm(); break;
+    case 'form-archive': {
+      const ex = exById(ui.form.id);
+      ex.archived = !ex.archived;
+      ui.sel = ui.sel.filter(id => id !== ex.id);
+      toast(ex.archived ? `Archived ${ex.name}` : `Restored ${ex.name}`);
+      ui.form = null; commit(); break;
+    }
+    case 'export': exportJson(); break;
+    case 'import': $('#importFile').click(); break;
+    case 'import-cancel': ui.importPending = null; render(); break;
+    case 'import-confirm': {
+      const raw = ui.importPending.raw;
+      ui.importPending = null; ui.sel = []; ui.adding = false;
+      replaceData(raw, true);
+      toast('Data imported');
+      Drive.pushNow(); break;
+    }
+    case 'drive-connect': Drive.connect(); break;
+    case 'drive-sync': Drive.tap(); break;
+    case 'drive-disconnect': Drive.disconnect(); break;
+    case 'conflict-local': Drive.resolveConflict(true); break;
+    case 'conflict-remote': Drive.resolveConflict(false); break;
+  }
+});
+
+// Workout fields autosave on every keystroke without re-rendering (keeps focus).
+function onField(e) {
+  const t = e.target, f = t.dataset.f, cur = current();
+  if (!f || !cur) return;
+  if (f === 'date') {
+    if (!validDate(t.value) || t.value === cur.date) return;
+    cur.date = t.value; sortSessions(data.sessions);
+    return commit({ render: false });
+  }
+  const item = cur.items[+t.dataset.i];
+  if (f === 'setting') { const ex = exById(item.exercise); if (ex) ex.setting = t.value; }
+  else if (f === 'note') { item.note = t.value; autoGrow(t); }
+  else {
+    const s = item.sets[+t.dataset.j];
+    s[f] = f === 'weight' ? num(t.value) : int(t.value);
+    s.done = s.weight != null || s.reps != null; // typing a value marks the row as done
+    const row = t.closest('.set');
+    row.classList.toggle('done', s.done);
+    row.querySelector('.tog.ok').classList.toggle('on', s.done);
+  }
+  commit({ render: false });
+}
+document.addEventListener('input', onField);
+document.addEventListener('change', e => { if (e.target.dataset.f === 'date') onField(e); });
+document.addEventListener('toggle', e => { if (e.target.dataset.actToggle === 'arch') ui.archOpen = e.target.open; }, true);
+
+// ================= Google Drive sync =================
+// Self-contained. Interface used by the app: Drive.status, Drive.connect(), Drive.pull(), Drive.push(),
+// Drive.sync(), Drive.tap(), Drive.schedulePush(), Drive.pushNow(), Drive.disconnect(), Drive.info().
+// Depends on the app only through: data, serialize(), replaceData(), isDirty(), setDirty(), changeSeq,
+// today(), render(), toast(), modal().
+const Drive = (() => {
+  const SCOPE = 'https://www.googleapis.com/auth/drive.file';
+  const API = 'https://www.googleapis.com/drive/v3', UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
+  const FOLDER = 'Gym Tracker', FILE = 'gym.json';
+  const K = {
+    token: 'gym.drive.token', expires: 'gym.drive.expires', consented: 'gym.drive.consented',
+    connected: 'gym.drive.connected', folder: 'gym.drive.folderId', file: 'gym.drive.fileId',
+    mtime: 'gym.drive.modifiedTime', backup: 'gym.drive.backupDay',
+    lastSync: 'gym.drive.lastSync', lastError: 'gym.drive.lastError',
+  };
+  const get = k => localStorage.getItem(k);
+  const put = (k, v) => v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v);
+  const configured = !!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('YOUR_');
+  let tokenClient = null, authWaiter = null, busy = false, timer = null, conflict = null;
+
+  const hasToken = () => !!get(K.token) && Number(get(K.expires)) > Date.now() + 30000;
+  const connected = () => configured && get(K.connected) === '1';
+  function status() {
+    if (!connected()) return 'local';
+    if (busy) return 'syncing';
+    if (!hasToken() || get(K.lastError) || conflict) return 'reconnect';
+    return isDirty() ? 'unsynced' : 'synced';
+  }
+  const update = () => (ui.tab === 'settings' ? render() : renderChrome());
+
+  // --- Auth (GIS token model). The script is preloaded so the popup opens inside the click. ---
+  function loadGis() {
+    if (!configured) return;
+    const s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client'; s.async = true;
+    s.onload = () => {
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID, scope: SCOPE, callback: onToken,
+        error_callback: err => finishAuth(new Error(err && (err.message || err.type) || 'Sign-in cancelled')),
+      });
+    };
+    document.head.appendChild(s);
+  }
+  function onToken(r) {
+    if (r.error) return finishAuth(new Error(r.error_description || r.error));
+    if (!google.accounts.oauth2.hasGrantedAllScopes(r, SCOPE)) return finishAuth(new Error('Drive access was not granted'));
+    put(K.token, r.access_token);
+    put(K.expires, String(Date.now() + Number(r.expires_in || 3600) * 1000));
+    put(K.consented, '1');
+    finishAuth(null);
+  }
+  function finishAuth(err) { const w = authWaiter; authWaiter = null; if (w) err ? w.reject(err) : w.resolve(); }
+  // Must be called synchronously from a click handler.
+  function requestToken() {
+    return new Promise((resolve, reject) => {
+      if (!tokenClient) return reject(new Error('Google sign-in is not loaded yet. Check the connection and try again.'));
+      authWaiter = { resolve, reject };
+      tokenClient.requestAccessToken({ prompt: get(K.consented) ? '' : 'consent' });
+    });
+  }
+
+  // --- REST ---
+  async function api(url, opts = {}) {
+    const res = await fetch(url, { ...opts, cache: 'no-store', headers: { Authorization: `Bearer ${get(K.token)}`, ...(opts.headers || {}) } });
+    if (res.status === 401) { put(K.token, null); throw new Error('Google sign-in expired'); }
+    if (!res.ok) { const e = new Error(`Drive error ${res.status}`); e.status = res.status; throw e; }
+    return res;
+  }
+  const json = async (url, opts) => (await api(url, opts)).json();
+  const postJson = (url, body, method = 'POST') => json(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  async function findOne(q) {
+    const r = await json(`${API}/files?q=${encodeURIComponent(q)}&spaces=drive&pageSize=1&fields=files(id,modifiedTime)`);
+    return r.files[0] || null;
+  }
+  async function getMeta(id, fields) {
+    try { const f = await json(`${API}/files/${id}?fields=${fields},trashed`); return f.trashed ? null : f; }
+    catch (e) { if (e.status === 404) return null; throw e; }
+  }
+  async function folderId() {
+    let id = get(K.folder);
+    if (id && await getMeta(id, 'id')) return id;
+    const found = await findOne(`name='${FOLDER}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`);
+    id = found ? found.id : (await postJson(`${API}/files?fields=id`, { name: FOLDER, mimeType: 'application/vnd.google-apps.folder' })).id;
+    put(K.folder, id);
+    return id;
+  }
+  // {id, modifiedTime} of gym.json, or null if it does not exist yet.
+  async function fileMeta() {
+    const id = get(K.file);
+    if (id) { const f = await getMeta(id, 'id,modifiedTime'); if (f) return f; put(K.file, null); }
+    const f = await findOne(`name='${FILE}' and '${await folderId()}' in parents and trashed=false`);
+    if (f) put(K.file, f.id);
+    return f;
+  }
+  async function takeRemote(meta) {
+    const text = await (await api(`${API}/files/${meta.id}?alt=media`)).text();
+    let raw;
+    try { raw = JSON.parse(text); } catch { throw new Error('gym.json on Drive is not valid JSON — fix it by hand'); }
+    put(K.mtime, meta.modifiedTime);
+    replaceData(raw, false);
+  }
+  // Copies gym.json to gym-backup-YYYY-MM-DD.json before the first overwrite of the day.
+  async function backup(fileId) {
+    const day = today(), name = `gym-backup-${day}.json`;
+    if (get(K.backup) === day) return;
+    const folder = await folderId();
+    if (!await findOne(`name='${name}' and '${folder}' in parents and trashed=false`))
+      await postJson(`${API}/files/${fileId}/copy?fields=id`, { name, parents: [folder] });
+    put(K.backup, day);
+  }
+  async function write(meta) {
+    const seq = changeSeq, body = serialize(data);
+    let res;
+    if (meta) {
+      await backup(meta.id);
+      res = await json(`${UPLOAD}/files/${meta.id}?uploadType=media&fields=id,modifiedTime`,
+        { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
+    } else {
+      const b = 'gymtracker' + Math.random().toString(36).slice(2);
+      const metadata = JSON.stringify({ name: FILE, parents: [await folderId()], mimeType: 'application/json' });
+      res = await json(`${UPLOAD}/files?uploadType=multipart&fields=id,modifiedTime`, {
+        method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${b}` },
+        body: `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`,
+      });
+      put(K.file, res.id);
+    }
+    put(K.mtime, res.modifiedTime);
+    if (changeSeq === seq) setDirty(false);
+  }
+
+  // --- Sync steps. Each returns false if it stopped on a conflict. ---
+  async function pull() {
+    const meta = await fileMeta();
+    if (!meta || meta.modifiedTime === get(K.mtime)) return true;
+    if (!isDirty()) { await takeRemote(meta); return true; }
+    askConflict(meta); return false;
+  }
+  async function push() {
+    const meta = await fileMeta();
+    if (meta && meta.modifiedTime !== get(K.mtime)) {
+      if (!isDirty()) { await takeRemote(meta); return true; }
+      askConflict(meta); return false;
+    }
+    await write(meta);
+    return true;
+  }
+  async function syncSteps() { if (!await pull()) return false; return isDirty() ? push() : true; }
+
+  async function run(fn) {
+    if (busy || conflict || !connected() || !hasToken()) return update();
+    busy = true; update();
+    try {
+      if (await fn() !== false) put(K.lastSync, new Date().toISOString());
+      put(K.lastError, null);
+    } catch (e) {
+      console.error(e);
+      put(K.lastError, e.message || String(e));
+    } finally {
+      busy = false; update();
+    }
+    if (isDirty() && !get(K.lastError) && !conflict) schedulePush();
+  }
+
+  // --- Conflict: the file changed on Drive and this device has unsynced changes. ---
+  function askConflict(meta) { conflict = meta; showConflict(); }
+  function showConflict() {
+    modal(`<h2>Drive copy changed</h2>
+      <p>gym.json was changed elsewhere since this device last synced, and this device has unsynced changes too.</p>
+      <button class="btn block primary" data-act="conflict-local">Keep this device's version</button>
+      <button class="btn block" data-act="conflict-remote">Use Drive version</button>`);
+  }
+  function resolveConflict(useLocal) {
+    const meta = conflict;
+    conflict = null; modal(null);
+    if (!meta) return;
+    run(async () => {
+      if (!useLocal) return takeRemote(meta);
+      put(K.mtime, meta.modifiedTime); // accept their version as the base, then overwrite it
+      return push();
+    });
+  }
+
+  // --- Public ---
+  function schedulePush() {
+    clearTimeout(timer);
+    if (connected() && hasToken() && !conflict) timer = setTimeout(() => run(push), 3000);
+  }
+  function pushNow() { clearTimeout(timer); run(push); }
+  const sync = () => run(syncSteps);
+  function connect() { // user gesture
+    if (!configured) { toast('Google Drive is not configured (see SETUP.md)'); return; }
+    requestToken()
+      .then(() => { put(K.connected, '1'); put(K.lastError, null); return sync(); })
+      .catch(e => { put(K.lastError, e.message); update(); });
+  }
+  function tap() { // sync indicator / "Sync now": interactive sync
+    if (!connected()) { ui.tab = 'settings'; render(); if (configured) connect(); return; }
+    if (conflict) return showConflict();
+    put(K.lastError, null);
+    hasToken() ? sync() : connect();
+  }
+  function disconnect() {
+    const t = get(K.token);
+    if (t && window.google && google.accounts) google.accounts.oauth2.revoke(t, () => {});
+    [K.token, K.expires, K.connected, K.consented, K.lastError].forEach(k => put(k, null));
+    clearTimeout(timer);
+    update();
+  }
+  function init() {
+    loadGis();
+    if (connected() && hasToken()) sync();
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') { if (connected() && hasToken()) sync(); else update(); }
+    });
+  }
+  const info = () => ({
+    configured, connected: connected(), hasToken: hasToken(),
+    lastSync: get(K.lastSync), lastError: get(K.lastError),
+  });
+  return {
+    get status() { return status(); },
+    connect, pull: () => run(pull), push: () => run(push), sync, tap, schedulePush, pushNow,
+    disconnect, resolveConflict, info, init,
+  };
+})();
+
+// ================= Start =================
+render();
+Drive.init();
+if ('serviceWorker' in navigator && location.protocol !== 'file:') navigator.serviceWorker.register('sw.js');
+</script>
+</body>
+</html>
