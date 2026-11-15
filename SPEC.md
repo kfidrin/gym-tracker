@@ -69,7 +69,8 @@ it should ignore unknown fields and survive missing optional fields.
       "name": "Face Pulls",
       "setting": "Top; double rope",
       "maxSkip": 3,
-      "archived": false
+      "archived": false,
+      "photo": "face-pulls-m3k9x2a1.jpg"
     }
   ],
   "sessions": [
@@ -111,6 +112,10 @@ Field rules:
 - **exercises[].archived**: an archived exercise is hidden from planning and
   from the exercise list (it appears in an "Archived" section there). It is
   never deleted, so history stays consistent.
+- **exercises[].photo**: file name of the exercise's photo, or `null`. One photo
+  per exercise, to recognise the machine later. The image itself is not in
+  `gym.json` (see §6, Photos). Each new or replaced photo gets a new name
+  (`<exercise-id>-<timestamp>.jpg`), so other devices notice the change.
 - **sessions**: kept sorted by `date` ascending. `finished: false` marks the
   one in-progress workout. There is at most one, and it is stored in the file
   so it syncs between devices.
@@ -157,6 +162,8 @@ header and is also a tap target (§6).
     muted.
   - If the exercise belongs to other groups too, also show them small (e.g.
     "also Back").
+  - If it has a photo, a thumbnail next to the row. Tapping the thumbnail
+    shows the photo; it does not toggle the selection.
 - Tapping a row toggles its selection. An exercise in two groups is selected in
   both places at once.
 - A per-group counter shows how many exercises are selected.
@@ -176,6 +183,8 @@ header and is also a tap target (§6).
     and the note move with it.
   - The **setting** field, editable inline. Edits write to the exercise, not
     the session.
+  - Next to it, the photo thumbnail (tap to view full size, with "Replace
+    photo"), or a 📷 button to take one right at the machine.
   - The line "Last time (18.10.): 70×15 · 70×15 · 70×15+".
   - **Set rows**: `[weight] × [reps] [+] [✓]`.
     - Inputs are empty, with the last performance as **placeholders**: set i
@@ -208,7 +217,8 @@ header and is also a tap target (§6).
   - Name (required),
   - Muscle groups (multi-select chips, at least one),
   - Max skip (number, optional),
-  - Setting (text).
+  - Setting (text),
+  - Photo (add / replace / remove; camera or gallery).
   New exercises are appended to the end of each selected group.
 - Tapping an exercise opens the same form for editing. Changing its groups adds
   it to or removes it from those group lists. "Archive" / "Unarchive" are in
@@ -274,6 +284,22 @@ header and is also a tap target (§6).
 5. **Daily backup**: before the first overwrite of `gym.json` on a given day,
    copy the current remote file to `gym-backup-YYYY-MM-DD.json` in the same
    folder (`files.copy`). Backups are never deleted automatically.
+
+**Photos**
+
+- A picked photo is scaled down to max 1024 px and stored as JPEG (quality
+  0.8, about 100–150 KB).
+- Locally, photos live in IndexedDB, keyed by file name. They work without
+  Drive, but then only on that device.
+- In Drive, each photo is a separate file in **"Gym Tracker/photos"**.
+  New photos are uploaded during a push, before `gym.json` is written, so the
+  file never names a photo that is not there yet. Replaced or removed photos
+  are moved to the Drive trash after the write. Pending uploads and removals
+  are queued in `localStorage` until the next push.
+- A device that shows a photo it does not have downloads it from Drive and
+  caches it in IndexedDB.
+- Photos are not part of Export / Import JSON, and not covered by the daily
+  backup.
 
 **Tokens and login**
 

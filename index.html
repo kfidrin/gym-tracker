@@ -157,6 +157,21 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 .err { color: var(--due); font-size: 14px; }
 .small { font-size: 13px; color: var(--muted); }
 
+/* Photos */
+.exrow { display: flex; gap: 6px; margin: 0 0 6px; }
+.exrow .ex { flex: 1; min-width: 0; margin: 0; }
+.pic {
+  flex: 0 0 56px; padding: 0; overflow: hidden; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--card); font-size: 20px;
+}
+.pic img, .photo-edit img { display: block; width: 100%; height: 100%; object-fit: cover; background: var(--line); }
+.pic img.missing { visibility: hidden; }
+.setting-row { display: flex; gap: 8px; }
+.setting-row .pic { flex-basis: 44px; height: 40px; }
+.photo-edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.photo-edit .preview { width: 96px; height: 96px; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); }
+#modal img.full { display: block; width: 100%; max-height: 70vh; object-fit: contain; border-radius: 8px; margin-bottom: 12px; }
+
 /* Settings */
 .kv { margin: 4px 0; font-size: 15px; overflow-wrap: anywhere; }
 .kv span { color: var(--muted); }
@@ -187,12 +202,13 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
   <button data-act="tab" data-tab="settings">Settings</button>
 </nav>
 <input type="file" id="importFile" accept="application/json,.json" hidden>
+<input type="file" id="photoFile" accept="image/*" hidden>
 <div id="modal" hidden><div class="sheet"></div></div>
 <div id="toast" role="status"></div>
 <script>
 'use strict';
 const GOOGLE_CLIENT_ID = '239433349999-cdptvbltd2saropujjum62m48tj5pcor.apps.googleusercontent.com';
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 
 const GROUPS = [
   ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
@@ -256,7 +272,7 @@ function normalize(raw) {
     ids.add(id);
     exercises.push(withExtras({
       id, name: str(e.name).trim() || id, setting: str(e.setting),
-      maxSkip: nonNegInt(e.maxSkip), archived: e.archived === true,
+      maxSkip: nonNegInt(e.maxSkip), archived: e.archived === true, photo: str(e.photo).trim() || null,
     }, e));
   }
   const rawGroups = arr(raw.groups).filter(isObj);
@@ -352,8 +368,81 @@ function placeholder(st, id, j) {
   return sets.length ? sets[Math.min(j, sets.length - 1)] : null;
 }
 
+// ================= Photos =================
+// One photo per exercise. The blob lives in IndexedDB (and in Drive, see the Drive section);
+// gym.json only stores its file name in exercises[].photo. A new name is used for every
+// replacement, so other devices notice the change.
+const Photos = (() => {
+  let dbp, io;
+  const urls = {}, misses = {};
+  const db = () => dbp || (dbp = new Promise((res, rej) => {
+    const r = indexedDB.open('gym-photos', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('photos');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  }));
+  const tx = async (mode, fn) => {
+    const store = (await db()).transaction('photos', mode).objectStore('photos');
+    return new Promise((res, rej) => { const r = fn(store); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+  };
+  const get = name => tx('readonly', s => s.get(name));
+  const put = (name, blob) => tx('readwrite', s => s.put(blob, name));
+  const del = name => { if (urls[name]) { URL.revokeObjectURL(urls[name]); delete urls[name]; } return tx('readwrite', s => s.delete(name)); };
+  // Object URL for a photo: from IndexedDB, else downloaded from Drive. null if unavailable.
+  async function url(name) {
+    if (urls[name]) return urls[name];
+    if (misses[name] > Date.now() - 60000) return null;
+    let blob = await get(name).catch(() => null);
+    if (!blob && (blob = await Drive.fetchPhoto(name))) await put(name, blob);
+    if (!blob) { misses[name] = Date.now(); return null; }
+    return (urls[name] = URL.createObjectURL(blob));
+  }
+  // Fills every <img data-photo> under root once it scrolls into view.
+  function hydrate(root) {
+    if (io) io.disconnect();
+    io = new IntersectionObserver(entries => entries.forEach(en => {
+      if (!en.isIntersecting) return;
+      const img = en.target;
+      io.unobserve(img);
+      url(img.dataset.photo).then(u => { if (u) img.src = u; else img.classList.add('missing'); });
+    }), { rootMargin: '200px' });
+    root.querySelectorAll('img[data-photo]').forEach(img => io.observe(img));
+  }
+  const retry = () => Object.keys(misses).forEach(k => delete misses[k]); // e.g. after a sync
+  return { get, put, del, url, hydrate, retry };
+})();
+
+// Scales a picked image down to max 1024 px and re-encodes it as JPEG.
+async function shrink(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1024 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise((res, rej) => c.toBlob(b => b ? res(b) : rej(new Error('encode failed')), 'image/jpeg', 0.8));
+}
+// Sets (blob) or removes (null) the photo of an exercise. The caller commits.
+async function setPhoto(ex, blob) {
+  const old = ex.photo;
+  if (blob) {
+    const name = `${ex.id}-${Date.now().toString(36)}.jpg`;
+    await Photos.put(name, blob);
+    ex.photo = name;
+    Drive.photoAdded(name);
+  } else ex.photo = null;
+  if (old) { Photos.del(old); Drive.photoRemoved(old); }
+}
+const picButton = (ex, act) => `<button class="pic" data-act="${act}" data-id="${esc(ex.id)}" aria-label="${ex.photo ? 'Show photo' : 'Add photo'}">${ex.photo ? `<img data-photo="${esc(ex.photo)}" alt="">` : '📷'}</button>`;
+async function showPhoto(ex) {
+  const u = await Photos.url(ex.photo);
+  if (!u) return toast('Photo is not available on this device yet');
+  modal(`<img class="full" src="${u}" alt="Photo of ${esc(ex.name)}">
+    <div class="row"><button class="btn" data-act="photo-pick" data-id="${esc(ex.id)}">Replace photo</button>
+    <button class="btn primary" data-act="modal-close">Close</button></div>`);
+}
+
 // ================= UI =================
-const ui = { tab: 'plan', sel: [], adding: false, form: null, archOpen: false, importPending: null };
+const ui = { tab: 'plan', sel: [], adding: false, form: null, archOpen: false, importPending: null, photoTarget: null };
 
 function render() {
   const main = $('#main');
@@ -361,6 +450,7 @@ function render() {
   else if (ui.tab === 'exercises') ui.form ? renderForm(main) : renderExercises(main);
   else renderSettings(main);
   main.querySelectorAll('textarea.field').forEach(autoGrow);
+  Photos.hydrate(main);
   renderChrome();
 }
 function renderChrome() {
@@ -418,11 +508,11 @@ function renderPlan(main) {
       if (ex.maxSkip != null) meta.push(`max ${ex.maxSkip}`);
       if (also) meta.push(`also ${esc(also)}`);
       if (inW) meta.push('in workout');
-      h += `<button class="ex ${status}${ui.sel.includes(id) ? ' sel' : ''}" data-act="toggle" data-id="${esc(id)}"${inW ? ' disabled' : ''}>
+      h += `<div class="exrow"><button class="ex ${status}${ui.sel.includes(id) ? ' sel' : ''}" data-act="toggle" data-id="${esc(id)}"${inW ? ' disabled' : ''}>
         <span class="check"></span>
         <span class="body"><span class="name">${esc(ex.name)}</span><span class="meta">${meta.join(' · ')}</span></span>
         ${status === 'due' || status === 'soon' ? `<span class="badge">${status}</span>` : ''}
-      </button>`;
+      </button>${ex.photo ? picButton(ex, 'view-photo') : ''}</div>`;
     }
     h += `</section>`;
   }
@@ -447,7 +537,8 @@ function renderWorkout(main, cur) {
         <button class="icon" data-act="move-item" data-dir="-1" data-i="${i}" aria-label="Move up"${i === 0 ? ' disabled' : ''}>▲</button>
         <button class="icon" data-act="move-item" data-dir="1" data-i="${i}" aria-label="Move down"${i === cur.items.length - 1 ? ' disabled' : ''}>▼</button>
         <button class="icon" data-act="rm-item" data-i="${i}" aria-label="Remove from workout">✕</button></div>
-      ${ex ? `<input class="field" data-f="setting" data-i="${i}" value="${esc(ex.setting)}" placeholder="Setting (machine / seat)" aria-label="Setting">` : ''}
+      ${ex ? `<div class="setting-row"><input class="field" data-f="setting" data-i="${i}" value="${esc(ex.setting)}" placeholder="Setting (machine / seat)" aria-label="Setting">
+        ${picButton(ex, ex.photo ? 'view-photo' : 'photo-pick')}</div>` : ''}
       <div class="last">${last ? `Last time (${fmtShort(last.date)}): ${esc(fmtSets(last.item.sets))}` : 'First time'}</div>`;
     it.sets.forEach((s, j) => {
       const ph = placeholder(st, it.exercise, j);
@@ -537,14 +628,30 @@ function renderForm(main) {
     <input class="field" id="f-max" inputmode="numeric" value="${ex ? fmtNum(ex.maxSkip) : ''}" placeholder="no limit" autocomplete="off">
     <label for="f-setting">Setting</label>
     <input class="field" id="f-setting" value="${esc(ex ? ex.setting : '')}" placeholder="e.g. Seat 5; top 1" autocomplete="off">
+    <label>Photo</label>
+    <div class="photo-edit" id="f-photo"></div>
     <p class="err" id="f-err"></p>
     <div class="row"><button class="btn" data-act="form-cancel">Cancel</button><button class="btn primary" data-act="form-save">Save</button></div>
     ${ex ? `<button class="btn block" data-act="form-archive">${ex.archived ? 'Unarchive' : 'Archive'}</button>` : ''}
   </div>`;
+  renderFormPhoto();
   if (!ex) $('#f-name').focus();
 }
+// ui.form.photo: undefined = unchanged, a Blob = new photo, null = remove. Applied on Save.
+function renderFormPhoto() {
+  const f = ui.form, ex = f.id ? exById(f.id) : null;
+  if (f.previewUrl) { URL.revokeObjectURL(f.previewUrl); f.previewUrl = null; }
+  let img = '';
+  if (f.photo) img = `<img src="${(f.previewUrl = URL.createObjectURL(f.photo))}" alt="">`;
+  else if (f.photo === undefined && ex && ex.photo) img = `<img data-photo="${esc(ex.photo)}" alt="">`;
+  const box = $('#f-photo');
+  box.innerHTML = (img ? `<div class="preview">${img}</div>` : `<span class="none">No photo</span>`) +
+    `<button class="btn" data-act="photo-pick">${img ? 'Replace' : 'Add photo'}</button>` +
+    (img ? `<button class="btn danger" data-act="photo-clear">Remove</button>` : '');
+  Photos.hydrate(box);
+}
 
-function saveForm() {
+async function saveForm() {
   const name = $('#f-name').value.trim(), setting = $('#f-setting').value.trim();
   const groups = [...document.querySelectorAll('.chip.on')].map(c => c.dataset.g);
   const maxRaw = $('#f-max').value.trim(), maxSkip = nonNegInt(maxRaw);
@@ -564,6 +671,7 @@ function saveForm() {
     if (want && !has) g.exercises.push(ex.id);
     if (!want && has) g.exercises.splice(g.exercises.indexOf(ex.id), 1);
   }
+  if (ui.form.photo !== undefined) await setPhoto(ex, ui.form.photo);
   ui.form = null;
   commit();
 }
@@ -629,6 +737,7 @@ function renderSettings(main) {
         <div class="row"><button class="btn" data-act="import-cancel">Cancel</button>
         <button class="btn primary" data-act="import-confirm">Replace local data</button></div></div>` : ''}
       <button class="btn block" data-act="starter">Load starter exercises</button>
+      <p class="small">Photos are not part of the JSON export. They are kept on this device and in Drive (Gym Tracker/photos).</p>
     </div>
     <p class="small">Gym Tracker v${APP_VERSION}</p>`;
 }
@@ -650,6 +759,22 @@ $('#importFile').addEventListener('change', async e => {
     ui.importPending = { name: file.name, raw, data: normalize(raw) };
     render();
   } catch (err) { toast(`Import failed: ${err.message}`); }
+});
+
+// Photo picked (camera or gallery): for the open form, or directly for an exercise.
+$('#photoFile').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  let blob;
+  try { blob = await shrink(file); } catch { return toast('Could not read that image'); }
+  const ex = ui.photoTarget && exById(ui.photoTarget);
+  if (ex) {
+    await setPhoto(ex, blob);
+    modal(null);
+    commit();
+    toast('Photo saved');
+  } else if (ui.form) { ui.form.photo = blob; renderFormPhoto(); }
 });
 
 // ---------- Events ----------
@@ -736,6 +861,10 @@ document.addEventListener('click', e => {
     case 'drive-connect': Drive.connect(); break;
     case 'drive-sync': Drive.tap(); break;
     case 'drive-disconnect': Drive.disconnect(); break;
+    case 'photo-pick': ui.photoTarget = el.dataset.id || null; $('#photoFile').click(); break;
+    case 'photo-clear': ui.form.photo = null; renderFormPhoto(); break;
+    case 'view-photo': showPhoto(exById(el.dataset.id)); break;
+    case 'modal-close': modal(null); break;
     case 'conflict-local': Drive.resolveConflict(true); break;
     case 'conflict-remote': Drive.resolveConflict(false); break;
   }
@@ -769,9 +898,12 @@ document.addEventListener('toggle', e => { if (e.target.dataset.actToggle === 'a
 
 // ================= Google Drive sync =================
 // Self-contained. Interface used by the app: Drive.status, Drive.connect(), Drive.pull(), Drive.push(),
-// Drive.sync(), Drive.tap(), Drive.schedulePush(), Drive.pushNow(), Drive.disconnect(), Drive.info().
+// Drive.sync(), Drive.tap(), Drive.schedulePush(), Drive.pushNow(), Drive.disconnect(), Drive.info(),
+// and for photos Drive.photoAdded(name), Drive.photoRemoved(name), Drive.fetchPhoto(name).
 // Depends on the app only through: data, serialize(), replaceData(), isDirty(), setDirty(), changeSeq,
-// today(), render(), toast(), modal().
+// today(), render(), toast(), modal(), Photos.get(), Photos.retry().
+// Photos are separate files in "Gym Tracker/photos". New photos are uploaded before gym.json is written
+// (so it never names a missing file); replaced or removed ones are moved to the Drive trash after.
 const Drive = (() => {
   const SCOPE = 'https://www.googleapis.com/auth/drive.file';
   const API = 'https://www.googleapis.com/drive/v3', UPLOAD = 'https://www.googleapis.com/upload/drive/v3';
@@ -781,7 +913,10 @@ const Drive = (() => {
     connected: 'gym.drive.connected', folder: 'gym.drive.folderId', file: 'gym.drive.fileId',
     mtime: 'gym.drive.modifiedTime', backup: 'gym.drive.backupDay',
     lastSync: 'gym.drive.lastSync', lastError: 'gym.drive.lastError',
+    photosFolder: 'gym.drive.photosFolderId', photoQueue: 'gym.drive.photoQueue',
   };
+  const FOLDER_MIME = 'application/vnd.google-apps.folder';
+  const quote = s => `'${s.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`; // Drive query string literal
   const get = k => localStorage.getItem(k);
   const put = (k, v) => v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v);
   const configured = !!GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('YOUR_');
@@ -848,10 +983,31 @@ const Drive = (() => {
   async function folderId() {
     let id = get(K.folder);
     if (id && await getMeta(id, 'id')) return id;
-    const found = await findOne(`name='${FOLDER}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`);
-    id = found ? found.id : (await postJson(`${API}/files?fields=id`, { name: FOLDER, mimeType: 'application/vnd.google-apps.folder' })).id;
+    const found = await findOne(`name='${FOLDER}' and mimeType='${FOLDER_MIME}' and 'root' in parents and trashed=false`);
+    id = found ? found.id : (await postJson(`${API}/files?fields=id`, { name: FOLDER, mimeType: FOLDER_MIME })).id;
     put(K.folder, id);
     return id;
+  }
+  // With create = false (read-only lookups) returns null instead of creating the folder.
+  async function photosFolderId(create = true) {
+    let id = get(K.photosFolder);
+    if (id && await getMeta(id, 'id')) return id;
+    const parent = await folderId();
+    const found = await findOne(`name='photos' and mimeType='${FOLDER_MIME}' and '${parent}' in parents and trashed=false`);
+    if (!found && !create) return null;
+    id = found ? found.id : (await postJson(`${API}/files?fields=id`, { name: 'photos', mimeType: FOLDER_MIME, parents: [parent] })).id;
+    put(K.photosFolder, id);
+    return id;
+  }
+  // Creates a file with content in one multipart request; returns {id, modifiedTime}.
+  function createFile(name, parent, type, content) {
+    const b = 'gymtracker' + Math.random().toString(36).slice(2);
+    const metadata = JSON.stringify({ name, parents: [parent], mimeType: type });
+    return json(`${UPLOAD}/files?uploadType=multipart&fields=id,modifiedTime`, {
+      method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${b}` },
+      body: new Blob([`--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${b}\r\nContent-Type: ${type}\r\n\r\n`,
+        content, `\r\n--${b}--`]),
+    });
   }
   // {id, modifiedTime} of gym.json, or null if it does not exist yet.
   async function fileMeta() {
@@ -885,16 +1041,49 @@ const Drive = (() => {
       res = await json(`${UPLOAD}/files/${meta.id}?uploadType=media&fields=id,modifiedTime`,
         { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body });
     } else {
-      const b = 'gymtracker' + Math.random().toString(36).slice(2);
-      const metadata = JSON.stringify({ name: FILE, parents: [await folderId()], mimeType: 'application/json' });
-      res = await json(`${UPLOAD}/files?uploadType=multipart&fields=id,modifiedTime`, {
-        method: 'POST', headers: { 'Content-Type': `multipart/related; boundary=${b}` },
-        body: `--${b}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n--${b}\r\nContent-Type: application/json\r\n\r\n${body}\r\n--${b}--`,
-      });
+      res = await createFile(FILE, await folderId(), 'application/json', body);
       put(K.file, res.id);
     }
     put(K.mtime, res.modifiedTime);
     if (changeSeq === seq) setDirty(false);
+  }
+
+  // --- Photos ---
+  function queue() {
+    try { const q = JSON.parse(get(K.photoQueue)); return { up: arr(q.up), trash: arr(q.trash) }; }
+    catch { return { up: [], trash: [] }; }
+  }
+  function editQueue(fn) { const q = queue(); fn(q); put(K.photoQueue, JSON.stringify(q)); }
+  function photoAdded(name) { editQueue(q => q.up.push(name)); }
+  function photoRemoved(name) {
+    editQueue(q => { if (q.up.includes(name)) q.up = q.up.filter(n => n !== name); else q.trash.push(name); });
+  }
+  async function findPhoto(name, create = true) {
+    const folder = await photosFolderId(create);
+    return folder && findOne(`name=${quote(name)} and '${folder}' in parents and trashed=false`);
+  }
+  async function uploadPhotos() {
+    const used = new Set(data.exercises.map(e => e.photo));
+    for (const name of queue().up) {
+      const blob = used.has(name) && await Photos.get(name);
+      if (blob && !await findPhoto(name)) await createFile(name, await photosFolderId(), 'image/jpeg', blob);
+      editQueue(q => { q.up = q.up.filter(n => n !== name); });
+    }
+  }
+  async function trashPhotos() {
+    for (const name of queue().trash) {
+      const f = await findPhoto(name);
+      if (f) await postJson(`${API}/files/${f.id}?fields=id`, { trashed: true }, 'PATCH');
+      editQueue(q => { q.trash = q.trash.filter(n => n !== name); });
+    }
+  }
+  // Downloads a photo that is not on this device yet. null if offline, not connected or not found.
+  async function fetchPhoto(name) {
+    if (!connected() || !hasToken() || !get(K.file)) return null; // only after a first sync found gym.json
+    try {
+      const f = await findPhoto(name, false);
+      return f ? await (await api(`${API}/files/${f.id}?alt=media`)).blob() : null;
+    } catch (e) { console.error(e); return null; }
   }
 
   // --- Sync steps. Each returns false if it stopped on a conflict. ---
@@ -910,7 +1099,9 @@ const Drive = (() => {
       if (!isDirty()) { await takeRemote(meta); return true; }
       askConflict(meta); return false;
     }
+    await uploadPhotos();
     await write(meta);
+    await trashPhotos();
     return true;
   }
   async function syncSteps() { if (!await pull()) return false; return isDirty() ? push() : true; }
@@ -921,6 +1112,7 @@ const Drive = (() => {
     try {
       if (await fn() !== false) put(K.lastSync, new Date().toISOString());
       put(K.lastError, null);
+      Photos.retry();
     } catch (e) {
       console.error(e);
       put(K.lastError, e.message || String(e));
@@ -989,7 +1181,7 @@ const Drive = (() => {
   return {
     get status() { return status(); },
     connect, pull: () => run(pull), push: () => run(push), sync, tap, schedulePush, pushNow,
-    disconnect, resolveConflict, info, init,
+    disconnect, resolveConflict, info, init, photoAdded, photoRemoved, fetchPhoto,
   };
 })();
 
