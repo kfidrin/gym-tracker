@@ -181,6 +181,10 @@ header and is also a tap target (§6).
     session.
   - ▲/▼ buttons that move the card up or down in the workout. Logged sets
     and the note move with it.
+  - Tapping the name collapses the card to a single summary line (today's
+    entered sets, with ✓ when every set is done); tapping it again expands it.
+    Which cards are collapsed is a per-device view setting in `localStorage`,
+    not part of `gym.json`, and it resets with the next workout.
   - The **setting** field, editable inline. Edits write to the exercise, not
     the session.
   - Next to it, the photo thumbnail (tap to view full size, with "Replace
