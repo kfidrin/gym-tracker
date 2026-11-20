@@ -145,8 +145,8 @@ Field rules:
 
 ## 4. Screens
 
-Navigation: a bottom tab bar with **Plan / Workout**, **Exercises** and
-**Settings**. Plan and Workout share one tab: it shows Workout while a session
+Navigation: a bottom tab bar with **Plan / Workout**, **History**,
+**Exercises** and **Settings**. Plan and Workout share one tab: it shows Workout while a session
 is in progress, otherwise Plan. A small sync-status indicator sits in the
 header and is also a tap target (§6).
 
@@ -229,7 +229,19 @@ header and is also a tap target (§6).
   the form as well.
 - An "Archived (N)" section at the bottom is collapsed by default.
 
-### 4.4 Settings
+### 4.4 History
+
+- A read-only list of finished sessions, newest first. Each card shows the
+  weekday and date ("Mon 16.11.2026", "4 days ago") and, per exercise, its
+  name, the sets in the "70×15 · 70×15 · 70×15+" format, and the note.
+- A dropdown at the top narrows the list to one exercise (only exercises that
+  appear in finished sessions, sorted by name). Tapping an exercise name in a
+  card selects it there too.
+- Archived or unknown exercises still show (unknown ids show the raw id).
+- The 30 most recent matching sessions are shown, with a "Show older" button.
+- Editing and deleting stay in `gym.json` (§5).
+
+### 4.5 Settings
 
 - Google Drive:
   - The connection status, a "Connect" / "Sync now" / "Disconnect" button, the
@@ -246,7 +258,6 @@ header and is also a tap target (§6).
 - Charts and progress graphs.
 - Editing or deleting past sessions in the app. The user edits `gym.json`
   directly.
-- History browsing beyond "last time" on the workout cards.
 - Migrating the old spreadsheet data.
 - Multiple users, sharing, accounts.
 - Drop sets, supersets, rest timers, per-side values.

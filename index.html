@@ -163,6 +163,15 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 .err { color: var(--due); font-size: 14px; }
 .small { font-size: 13px; color: var(--muted); }
 
+/* History */
+.hist-filter { width: 100%; min-height: 44px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 15px; }
+.hist h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 4px; font-size: 16px; }
+.hist h3 .small { font-weight: 400; }
+.hrow { padding: 8px 0 0; border-top: 1px solid var(--line); margin-top: 8px; }
+.hrow .hname { padding: 0; border: 0; background: none; font-weight: 600; text-align: left; overflow-wrap: anywhere; }
+.hrow .hsets { overflow-wrap: anywhere; }
+.hrow .small { overflow-wrap: anywhere; }
+
 /* Photos */
 .exrow { display: flex; gap: 6px; margin: 0 0 6px; }
 .exrow .ex { flex: 1; min-width: 0; margin: 0; }
@@ -204,6 +213,7 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 <main id="main"></main>
 <nav class="tabs">
   <button data-act="tab" data-tab="plan" id="tab-plan">Plan</button>
+  <button data-act="tab" data-tab="history">History</button>
   <button data-act="tab" data-tab="exercises">Exercises</button>
   <button data-act="tab" data-tab="settings">Settings</button>
 </nav>
@@ -214,7 +224,7 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 <script>
 'use strict';
 const GOOGLE_CLIENT_ID = '239433349999-cdptvbltd2saropujjum62m48tj5pcor.apps.googleusercontent.com';
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 
 const GROUPS = [
   ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
@@ -448,11 +458,12 @@ async function showPhoto(ex) {
 }
 
 // ================= UI =================
-const ui = { tab: 'plan', sel: [], adding: false, form: null, archOpen: false, importPending: null, photoTarget: null };
+const ui = { tab: 'plan', sel: [], adding: false, form: null, archOpen: false, importPending: null, photoTarget: null, histEx: '', histN: 30 };
 
 function render() {
   const main = $('#main');
   if (ui.tab === 'plan') { const cur = current(); cur && !ui.adding ? renderWorkout(main, cur) : renderPlan(main); }
+  else if (ui.tab === 'history') renderHistory(main);
   else if (ui.tab === 'exercises') ui.form ? renderForm(main) : renderExercises(main);
   else renderSettings(main);
   main.querySelectorAll('textarea.field').forEach(autoGrow);
@@ -605,6 +616,34 @@ function finishWorkout() {
   commit();
   Drive.pushNow();
   window.scrollTo(0, 0);
+}
+
+// ---------- History ----------
+// Read-only list of finished workouts, newest first, optionally narrowed to one exercise.
+const weekday = iso => new Date(iso + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short' });
+function renderHistory(main) {
+  const all = finishedSessions().reverse();
+  if (!all.length) { main.innerHTML = `<div class="hint">No finished workouts yet.</div>`; return; }
+  const name = id => { const ex = exById(id); return ex ? ex.name : id; };
+  const ids = [...new Set(all.flatMap(s => s.items.map(it => it.exercise)))].sort((a, b) => name(a).localeCompare(name(b)));
+  if (ui.histEx && !ids.includes(ui.histEx)) ui.histEx = '';
+  const list = all.map(s => ({ s, items: ui.histEx ? s.items.filter(it => it.exercise === ui.histEx) : s.items })).filter(e => e.items.length);
+  let h = `<select class="hist-filter" id="hist-ex" aria-label="Show exercise">
+    <option value="">All exercises</option>
+    ${ids.map(id => `<option value="${esc(id)}"${id === ui.histEx ? ' selected' : ''}>${esc(name(id))}</option>`).join('')}
+  </select>
+  <h2>${ui.histEx ? esc(name(ui.histEx)) : 'Workouts'}<span class="small">${list.length}</span></h2>`;
+  for (const { s, items } of list.slice(0, ui.histN)) {
+    h += `<div class="card hist"><h3>${weekday(s.date)} ${fmtDate(s.date)}<span class="small">${daysAgo(s.date)}</span></h3>`;
+    for (const it of items) h += `<div class="hrow">
+        ${ui.histEx ? '' : `<button class="hname" data-act="hist-ex" data-id="${esc(it.exercise)}">${esc(name(it.exercise))}</button>`}
+        <div class="hsets">${esc(fmtSets(it.sets))}</div>
+        ${it.note ? `<div class="small">${esc(it.note)}</div>` : ''}
+      </div>`;
+    h += `</div>`;
+  }
+  if (list.length > ui.histN) h += `<button class="btn block" data-act="hist-more">Show older (${list.length - ui.histN})</button>`;
+  main.innerHTML = h;
 }
 
 // ---------- Exercises ----------
@@ -815,6 +854,8 @@ document.addEventListener('click', e => {
       if (ui.tab !== 'settings') ui.importPending = null;
       render(); window.scrollTo(0, 0); break;
     case 'sync-tap': Drive.tap(); break;
+    case 'hist-ex': ui.histEx = el.dataset.id; ui.histN = 30; render(); window.scrollTo(0, 0); break;
+    case 'hist-more': ui.histN += 30; render(); break;
     case 'toggle': {
       const id = el.dataset.id, k = ui.sel.indexOf(id);
       k < 0 ? ui.sel.push(id) : ui.sel.splice(k, 1);
@@ -919,7 +960,10 @@ function onField(e) {
   commit({ render: false });
 }
 document.addEventListener('input', onField);
-document.addEventListener('change', e => { if (e.target.dataset.f === 'date') onField(e); });
+document.addEventListener('change', e => {
+  if (e.target.dataset.f === 'date') onField(e);
+  if (e.target.id === 'hist-ex') { ui.histEx = e.target.value; ui.histN = 30; render(); window.scrollTo(0, 0); }
+});
 document.addEventListener('toggle', e => { if (e.target.dataset.actToggle === 'arch') ui.archOpen = e.target.open; }, true);
 
 // ================= Google Drive sync =================
