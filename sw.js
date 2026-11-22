@@ -1,5 +1,5 @@
 // Bump CACHE when a change must reach installed apps immediately.
-const CACHE = 'gym-v5';
+const CACHE = 'gym-v6';
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

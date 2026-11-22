@@ -224,7 +224,7 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 <script>
 'use strict';
 const GOOGLE_CLIENT_ID = '239433349999-cdptvbltd2saropujjum62m48tj5pcor.apps.googleusercontent.com';
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 
 const GROUPS = [
   ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
@@ -458,7 +458,7 @@ async function showPhoto(ex) {
 }
 
 // ================= UI =================
-const ui = { tab: 'plan', sel: [], adding: false, form: null, archOpen: false, importPending: null, photoTarget: null, histEx: '', histN: 30 };
+const ui = { tab: 'plan', sel: [], adding: false, form: null, archOpen: false, importPending: null, photoTarget: null, histEx: '', histN: 30, listY: 0 };
 
 function render() {
   const main = $('#main');
@@ -738,6 +738,7 @@ async function saveForm() {
   if (ui.form.photo !== undefined) await setPhoto(ex, ui.form.photo);
   ui.form = null;
   commit();
+  window.scrollTo(0, ui.listY);
 }
 
 // ---------- Starter exercises (§7) ----------
@@ -902,18 +903,18 @@ document.addEventListener('click', e => {
       ui.adding = false; ui.sel = [];
       commit(); toast('Workout discarded'); break;
     case 'starter': loadStarter(); break;
-    case 'new-ex': ui.form = { id: null }; render(); window.scrollTo(0, 0); break;
-    case 'edit-ex': ui.form = { id: el.dataset.id }; render(); window.scrollTo(0, 0); break;
+    case 'new-ex': ui.listY = window.scrollY; ui.form = { id: null }; render(); window.scrollTo(0, 0); break;
+    case 'edit-ex': ui.listY = window.scrollY; ui.form = { id: el.dataset.id }; render(); window.scrollTo(0, 0); break;
     case 'move': move(el.dataset.g, el.dataset.id, +el.dataset.dir); break;
     case 'chip': el.classList.toggle('on'); el.setAttribute('aria-pressed', el.classList.contains('on')); break;
-    case 'form-cancel': ui.form = null; render(); break;
+    case 'form-cancel': ui.form = null; render(); window.scrollTo(0, ui.listY); break;
     case 'form-save': saveForm(); break;
     case 'form-archive': {
       const ex = exById(ui.form.id);
       ex.archived = !ex.archived;
       ui.sel = ui.sel.filter(id => id !== ex.id);
       toast(ex.archived ? `Archived ${ex.name}` : `Restored ${ex.name}`);
-      ui.form = null; commit(); break;
+      ui.form = null; commit(); window.scrollTo(0, ui.listY); break;
     }
     case 'export': exportJson(); break;
     case 'import': $('#importFile').click(); break;
