@@ -199,6 +199,9 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 /* Settings */
 .kv { margin: 4px 0; font-size: 15px; overflow-wrap: anywhere; }
 .kv span { color: var(--muted); }
+.past-row { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
+.past-row label { flex: 0 0 48px; font-weight: 600; }
+.past-row input { flex: 1; min-width: 0; min-height: 44px; font-size: 17px; }
 .confirm { border: 1px solid var(--due); border-radius: 10px; padding: 12px; margin: 8px 0; }
 
 /* Modal and toast */
@@ -233,7 +236,7 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 <script>
 'use strict';
 const GOOGLE_CLIENT_ID = '239433349999-cdptvbltd2saropujjum62m48tj5pcor.apps.googleusercontent.com';
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 
 const GROUPS = [
   ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
@@ -324,9 +327,15 @@ function normalize(raw) {
     }, s);
   });
   sortSessions(sessions);
+  // Workout totals per year from before the app ({"2025": 160}). Only four-digit years with a count >= 0 are kept.
+  const pastWorkouts = {};
+  if (isObj(raw.pastWorkouts)) for (const [y, n] of Object.entries(raw.pastWorkouts)) {
+    const c = nonNegInt(n);
+    if (/^\d{4}$/.test(y) && c !== null) pastWorkouts[y] = c;
+  }
   return withExtras({
     format: 'gym-tracker', version: 1, updatedAt: str(raw.updatedAt) || new Date().toISOString(),
-    groups, exercises, sessions,
+    groups, exercises, pastWorkouts, sessions,
   }, raw);
 }
 const sortSessions = list => list.sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0); // stable
@@ -631,21 +640,22 @@ function finishWorkout() {
 const weekday = iso => new Date(iso + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short' });
 function renderHistory(main) {
   const all = finishedSessions().reverse();
-  if (!all.length) { main.innerHTML = `<div class="hint">No finished workouts yet.</div>`; return; }
+  // Weeks start on Monday. Dates are ISO strings, so ">=" compares them correctly.
+  const now = new Date(), t = today(now), year = t.slice(0, 4), monday = new Date(now);
+  monday.setDate(now.getDate() - (now.getDay() + 6) % 7);
+  const count = from => all.filter(s => s.date >= from && s.date <= t).length;
+  const past = data.pastWorkouts;
+  const inYear = y => all.filter(s => s.date.startsWith(y + '-')).length + (past[y] || 0);
+  const years = [...new Set([...all.map(s => s.date.slice(0, 4)), ...Object.keys(past)])]
+    .filter(y => y < year && inYear(y) > 0).sort().reverse();
+  const tile = (n, label) => `<div><b>${n}</b><span>${label}</span></div>`;
+  let h = `<div class="hist-stats">${tile(count(today(monday)), 'this week')}${tile(count(year + '-' + t.slice(5, 7) + '-01'), 'this month')}${tile(count(year + '-01-01') + (past[year] || 0), 'this year')}${years.map(y => tile(inYear(y), y)).join('')}</div>`;
+  if (!all.length) { main.innerHTML = h + `<div class="hint">No finished workouts in the app yet.</div>`; return; }
   const name = id => { const ex = exById(id); return ex ? ex.name : id; };
   const ids = [...new Set(all.flatMap(s => s.items.map(it => it.exercise)))].sort((a, b) => name(a).localeCompare(name(b)));
   if (ui.histEx && !ids.includes(ui.histEx)) ui.histEx = '';
   const list = all.map(s => ({ s, items: ui.histEx ? s.items.filter(it => it.exercise === ui.histEx) : s.items })).filter(e => e.items.length);
-  // Weeks start on Monday. Dates are ISO strings, so ">=" compares them correctly.
-  const now = new Date(), t = today(now), monday = new Date(now);
-  monday.setDate(now.getDate() - (now.getDay() + 6) % 7);
-  const count = from => all.filter(s => s.date >= from && s.date <= t).length;
-  let h = `<div class="hist-stats">
-    <div><b>${count(today(monday))}</b><span>this week</span></div>
-    <div><b>${count(t.slice(0, 8) + '01')}</b><span>this month</span></div>
-    <div><b>${count(t.slice(0, 5) + '01-01')}</b><span>this year</span></div>
-  </div>
-  <select class="hist-filter" id="hist-ex" aria-label="Show exercise">
+  h += `<select class="hist-filter" id="hist-ex" aria-label="Show exercise">
     <option value="">All exercises</option>
     ${ids.map(id => `<option value="${esc(id)}"${id === ui.histEx ? ' selected' : ''}>${esc(name(id))}</option>`).join('')}
   </select>
@@ -817,6 +827,14 @@ function renderSettings(main) {
       ? `<button class="btn primary" data-act="drive-sync">${d.hasToken ? 'Sync now' : 'Reconnect'}</button><button class="btn" data-act="drive-disconnect">Disconnect</button>`
       : `<button class="btn primary" data-act="drive-connect">Connect</button>`}</div>`;
   main.innerHTML = `<h2>Google Drive</h2><div class="card">${drive}</div>
+    <h2>Workouts before the app</h2><div class="card">
+      <p class="small">Totals per year, added to the year counts in History. For a year you also logged in the app, count only the workouts that are not in the app.</p>
+      ${Object.keys(data.pastWorkouts).sort().reverse().map(y => `<div class="past-row">
+        <label for="past-${y}">${y}</label>
+        <input class="field" id="past-${y}" inputmode="numeric" autocomplete="off" data-past="${y}" value="${data.pastWorkouts[y] || ''}" placeholder="0" aria-label="Workouts in ${y}">
+        <button class="icon" data-act="past-rm" data-year="${y}" aria-label="Remove ${y}">✕</button></div>`).join('')}
+      <button class="btn block" data-act="past-add">+ Add ${nextPastYear()}</button>
+    </div>
     <h2>Data</h2><div class="card">
       <p class="small">${data.exercises.length} exercises · ${finishedSessions().length} sessions</p>
       <button class="btn block" data-act="export">Export JSON</button>
@@ -829,6 +847,13 @@ function renderSettings(main) {
       <p class="small">Photos are not part of the JSON export. They are kept on this device and in Drive (Gym Tracker/photos).</p>
     </div>
     <p class="small">Gym Tracker v${APP_VERSION}</p>`;
+}
+
+// The newest year, from this one backwards, that has no total yet.
+function nextPastYear() {
+  let y = +today().slice(0, 4);
+  while (String(y) in data.pastWorkouts) y--;
+  return String(y);
 }
 
 function exportJson() {
@@ -880,6 +905,12 @@ document.addEventListener('click', e => {
       render(); window.scrollTo(0, 0); break;
     case 'sync-tap': Drive.tap(); break;
     case 'hist-ex': ui.histEx = el.dataset.id; ui.histN = 30; render(); window.scrollTo(0, 0); break;
+    case 'past-add': {
+      const y = nextPastYear();
+      data.pastWorkouts[y] = 0;
+      commit(); $(`#past-${y}`).focus(); break;
+    }
+    case 'past-rm': delete data.pastWorkouts[el.dataset.year]; commit(); break;
     case 'hist-more': ui.histN += 30; render(); break;
     case 'hist-open': { const id = el.dataset.id; ui.histOpen.has(id) ? ui.histOpen.delete(id) : ui.histOpen.add(id); render(); break; }
     case 'toggle': {
@@ -986,6 +1017,12 @@ function onField(e) {
   commit({ render: false });
 }
 document.addEventListener('input', onField);
+document.addEventListener('input', e => {
+  const y = e.target.dataset.past;
+  if (!y) return;
+  data.pastWorkouts[y] = nonNegInt(e.target.value) || 0;
+  commit({ render: false });
+});
 document.addEventListener('change', e => {
   if (e.target.dataset.f === 'date') onField(e);
   if (e.target.id === 'hist-ex') { ui.histEx = e.target.value; ui.histN = 30; render(); window.scrollTo(0, 0); }
@@ -1026,7 +1063,8 @@ const Drive = (() => {
     if (!hasToken() || get(K.lastError) || conflict) return 'reconnect';
     return isDirty() ? 'unsynced' : 'synced';
   }
-  const update = () => (ui.tab === 'settings' ? render() : renderChrome());
+  // Settings shows sync details, but is not redrawn while a year total is being typed (it would lose focus).
+  const update = () => (ui.tab === 'settings' && !document.activeElement.dataset.past ? render() : renderChrome());
 
   // --- Auth (GIS token model). The script is preloaded so the popup opens inside the click. ---
   function loadGis() {

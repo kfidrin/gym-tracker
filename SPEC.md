@@ -73,6 +73,7 @@ it should ignore unknown fields and survive missing optional fields.
       "photo": "face-pulls-m3k9x2a1.jpg"
     }
   ],
+  "pastWorkouts": { "2024": 148, "2025": 163, "2026": 120 },
   "sessions": [
     {
       "id": "2026-11-09-a1b2",
@@ -116,6 +117,10 @@ Field rules:
   per exercise, to recognise the machine later. The image itself is not in
   `gym.json` (see §6, Photos). Each new or replaced photo gets a new name
   (`<exercise-id>-<timestamp>.jpg`), so other devices notice the change.
+- **pastWorkouts**: workout totals per year from before the app, keyed by
+  four-digit year. Optional; `{}` if none. For a year that also has sessions
+  in the app, it holds only the workouts that are not in the app. Used only for
+  the year counts in History (§4.4).
 - **sessions**: kept sorted by `date` ascending. `finished: false` marks the
   one in-progress workout. There is at most one, and it is stored in the file
   so it syncs between devices.
@@ -231,9 +236,11 @@ header and is also a tap target (§6).
 
 ### 4.4 History
 
-- At the top, three counts of finished workouts: **this week** (weeks start
-  on Monday), **this month** and **this year**. They count all workouts,
-  whatever the dropdown below shows.
+- At the top, counts of finished workouts: **this week** (weeks start on
+  Monday), **this month** and **this year**, then one tile per earlier year
+  ("2025", "2024", …), newest first, for every year with at least one
+  workout. Year counts add `pastWorkouts` for that year; week and month do not.
+  They count all workouts, whatever the dropdown below shows.
 - A read-only list of finished sessions, newest first. Each card shows the
   weekday and date ("Mon 16.11.2026", "4 days ago"). Cards start collapsed,
   showing only that line; tapping it expands the card to show, per exercise,
@@ -253,6 +260,9 @@ header and is also a tap target (§6).
 - Google Drive:
   - The connection status, a "Connect" / "Sync now" / "Disconnect" button, the
     time of the last sync, and the last error, if any.
+- Workouts before the app: one row per year (year, count, ✕), newest first,
+  and a "+ Add <year>" button that adds the newest missing year, starting with
+  the current one. Edits save as you type, into `pastWorkouts`.
 - Data:
   - **Export JSON** downloads `gym-YYYY-MM-DD.json`.
   - **Import JSON** replaces local data after a confirmation tap, then syncs.
