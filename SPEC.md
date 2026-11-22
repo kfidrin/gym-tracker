@@ -145,8 +145,8 @@ Field rules:
 
 ## 4. Screens
 
-Navigation: a bottom tab bar with **Plan / Workout**, **History**,
-**Exercises** and **Settings**. Plan and Workout share one tab: it shows Workout while a session
+Navigation: a bottom tab bar with **Plan / Workout**, **Exercises**,
+**History** and **Settings**. Plan and Workout share one tab: it shows Workout while a session
 is in progress, otherwise Plan. A small sync-status indicator sits in the
 header and is also a tap target (§6).
 
