@@ -231,12 +231,19 @@ header and is also a tap target (§6).
 
 ### 4.4 History
 
+- At the top, three counts of finished workouts: **this week** (weeks start
+  on Monday), **this month** and **this year**. They count all workouts,
+  whatever the dropdown below shows.
 - A read-only list of finished sessions, newest first. Each card shows the
-  weekday and date ("Mon 16.11.2026", "4 days ago") and, per exercise, its
-  name, the sets in the "70×15 · 70×15 · 70×15+" format, and the note.
+  weekday and date ("Mon 16.11.2026", "4 days ago"). Cards start collapsed,
+  showing only that line; tapping it expands the card to show, per exercise,
+  its name, the sets in the "70×15 · 70×15 · 70×15+" format, and the note.
+  Which cards are expanded is not stored; it resets when the app reloads.
 - A dropdown at the top narrows the list to one exercise (only exercises that
   appear in finished sessions, sorted by name). Tapping an exercise name in a
   card selects it there too.
+  With one exercise picked, the cards are always expanded (each shows only
+  that exercise).
 - Archived or unknown exercises still show (unknown ids show the raw id).
 - The 30 most recent matching sessions are shown, with a "Show older" button.
 - Editing and deleting stay in `gym.json` (§5).

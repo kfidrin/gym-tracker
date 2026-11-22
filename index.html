@@ -165,8 +165,17 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 
 /* History */
 .hist-filter { width: 100%; min-height: 44px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card); font-size: 15px; }
+.hist-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 12px; }
+.hist-stats div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 4px; text-align: center; }
+.hist-stats b { display: block; font-size: 24px; }
+.hist-stats span { font-size: 13px; color: var(--muted); }
 .hist h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 4px; font-size: 16px; }
+.hist h3 .fold { justify-content: space-between; font-size: 16px; }
+.hist h3 .fold .small { margin-left: 8px; }
+.hist h3 .fold span:first-child { flex: 1; }
 .hist h3 .small { font-weight: 400; }
+.hist.folded { padding-top: 4px; padding-bottom: 4px; }
+.hist.folded h3 { margin: 0; }
 .hrow { padding: 8px 0 0; border-top: 1px solid var(--line); margin-top: 8px; }
 .hrow .hname { padding: 0; border: 0; background: none; font-weight: 600; text-align: left; overflow-wrap: anywhere; }
 .hrow .hsets { overflow-wrap: anywhere; }
@@ -224,7 +233,7 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 <script>
 'use strict';
 const GOOGLE_CLIENT_ID = '239433349999-cdptvbltd2saropujjum62m48tj5pcor.apps.googleusercontent.com';
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.5.0';
 
 const GROUPS = [
   ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
@@ -251,8 +260,7 @@ const int = v => { const n = num(v); return n === null ? null : Math.round(n); }
 const nonNegInt = v => { const n = int(v); return n === null || n < 0 ? null : n; };
 const fmtNum = n => n == null ? '' : String(n);
 
-function today() {
-  const d = new Date();
+function today(d = new Date()) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 const fmtDate = iso => { const [y, m, d] = iso.split('-'); return `${d}.${m}.${y}`; };
@@ -458,7 +466,7 @@ async function showPhoto(ex) {
 }
 
 // ================= UI =================
-const ui = { tab: 'plan', sel: [], adding: false, form: null, archOpen: false, importPending: null, photoTarget: null, histEx: '', histN: 30, listY: 0 };
+const ui = { tab: 'plan', sel: [], adding: false, form: null, archOpen: false, importPending: null, photoTarget: null, histEx: '', histN: 30, histOpen: new Set(), listY: 0 };
 
 function render() {
   const main = $('#main');
@@ -628,13 +636,29 @@ function renderHistory(main) {
   const ids = [...new Set(all.flatMap(s => s.items.map(it => it.exercise)))].sort((a, b) => name(a).localeCompare(name(b)));
   if (ui.histEx && !ids.includes(ui.histEx)) ui.histEx = '';
   const list = all.map(s => ({ s, items: ui.histEx ? s.items.filter(it => it.exercise === ui.histEx) : s.items })).filter(e => e.items.length);
-  let h = `<select class="hist-filter" id="hist-ex" aria-label="Show exercise">
+  // Weeks start on Monday. Dates are ISO strings, so ">=" compares them correctly.
+  const now = new Date(), t = today(now), monday = new Date(now);
+  monday.setDate(now.getDate() - (now.getDay() + 6) % 7);
+  const count = from => all.filter(s => s.date >= from && s.date <= t).length;
+  let h = `<div class="hist-stats">
+    <div><b>${count(today(monday))}</b><span>this week</span></div>
+    <div><b>${count(t.slice(0, 8) + '01')}</b><span>this month</span></div>
+    <div><b>${count(t.slice(0, 5) + '01-01')}</b><span>this year</span></div>
+  </div>
+  <select class="hist-filter" id="hist-ex" aria-label="Show exercise">
     <option value="">All exercises</option>
     ${ids.map(id => `<option value="${esc(id)}"${id === ui.histEx ? ' selected' : ''}>${esc(name(id))}</option>`).join('')}
   </select>
   <h2>${ui.histEx ? esc(name(ui.histEx)) : 'Workouts'}<span class="small">${list.length}</span></h2>`;
   for (const { s, items } of list.slice(0, ui.histN)) {
-    h += `<div class="card hist"><h3>${weekday(s.date)} ${fmtDate(s.date)}<span class="small">${daysAgo(s.date)}</span></h3>`;
+    const date = `<span>${weekday(s.date)} ${fmtDate(s.date)}</span><span class="small">${daysAgo(s.date)}</span>`;
+    // With one exercise picked the cards are short, so they stay open; otherwise they open on tap.
+    if (ui.histEx) h += `<div class="card hist"><h3>${date}</h3>`;
+    else {
+      const open = ui.histOpen.has(s.id);
+      h += `<div class="card hist${open ? '' : ' folded'}"><h3><button class="fold" data-act="hist-open" data-id="${esc(s.id)}" aria-expanded="${open}">${date}</button></h3>`;
+      if (!open) { h += `</div>`; continue; }
+    }
     for (const it of items) h += `<div class="hrow">
         ${ui.histEx ? '' : `<button class="hname" data-act="hist-ex" data-id="${esc(it.exercise)}">${esc(name(it.exercise))}</button>`}
         <div class="hsets">${esc(fmtSets(it.sets))}</div>
@@ -857,6 +881,7 @@ document.addEventListener('click', e => {
     case 'sync-tap': Drive.tap(); break;
     case 'hist-ex': ui.histEx = el.dataset.id; ui.histN = 30; render(); window.scrollTo(0, 0); break;
     case 'hist-more': ui.histN += 30; render(); break;
+    case 'hist-open': { const id = el.dataset.id; ui.histOpen.has(id) ? ui.histOpen.delete(id) : ui.histOpen.add(id); render(); break; }
     case 'toggle': {
       const id = el.dataset.id, k = ui.sel.indexOf(id);
       k < 0 ? ui.sel.push(id) : ui.sel.splice(k, 1);
