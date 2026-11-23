@@ -74,6 +74,7 @@ h2 { font-size: 15px; margin: 20px 0 8px; display: flex; justify-content: space-
 }
 .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .btn.danger { color: var(--due); }
+.hist .resume { margin: 12px 0 4px; }
 .btn.armed { background: var(--due); color: #fff; border-color: var(--due); }
 .btn.block { display: block; width: 100%; margin: 8px 0; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -236,7 +237,7 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 <script>
 'use strict';
 const GOOGLE_CLIENT_ID = '239433349999-cdptvbltd2saropujjum62m48tj5pcor.apps.googleusercontent.com';
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 
 const GROUPS = [
   ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
@@ -526,6 +527,7 @@ function renderPlan(main) {
   else {
     const fin = finishedSessions(), last = fin[fin.length - 1];
     h += `<div class="headline">${last ? `Last session: ${fmtDate(last.date)} · ${daysAgo(last.date)}` : 'No sessions yet'}</div>`;
+    if (last && last.date === today()) h += `<button class="btn block" data-act="resume">Resume today's workout</button>`;
   }
   if (!data.exercises.some(e => !e.archived)) {
     h += `<div class="hint">No exercises yet. Add your own on the <b>Exercises</b> tab, or start with the starter list.
@@ -617,6 +619,28 @@ function renderWorkout(main, cur) {
   main.innerHTML = h;
 }
 
+function confirmFinish() {
+  const cur = current();
+  const sets = cur.items.reduce((n, it) => n + it.sets.filter(s => s.done || s.weight != null || s.reps != null).length, 0);
+  const exs = cur.items.filter(it => it.sets.some(s => s.done || s.weight != null || s.reps != null)).length;
+  modal(`<h2>Finish workout?</h2>
+    <p>${sets ? `${exs} exercise${exs === 1 ? '' : 's'} · ${sets} set${sets === 1 ? '' : 's'} logged. Exercises without sets are left out.`
+      : 'Nothing is logged yet, so the workout will be discarded.'}</p>
+    <div class="row"><button class="btn" data-act="modal-close">Keep training</button>
+    <button class="btn primary" data-act="finish-confirm">Finish</button></div>`);
+}
+
+// Reopens the most recent finished workout, e.g. after finishing it by mistake. Its sets count as done.
+function resumeWorkout() {
+  const fin = finishedSessions(), s = fin[fin.length - 1];
+  if (!s || current()) return;
+  s.finished = false;
+  for (const it of s.items) for (const st of it.sets) st.done = true;
+  ui.tab = 'plan'; ui.sel = []; ui.adding = false;
+  commit(); window.scrollTo(0, 0);
+  toast('Workout resumed');
+}
+
 function finishWorkout() {
   const cur = current();
   for (const it of cur.items) it.sets = it.sets.filter(s => s.done || s.weight != null || s.reps != null);
@@ -674,6 +698,7 @@ function renderHistory(main) {
         <div class="hsets">${esc(fmtSets(it.sets))}</div>
         ${it.note ? `<div class="small">${esc(it.note)}</div>` : ''}
       </div>`;
+    if (s === all[0] && !current()) h += `<button class="btn block resume" data-act="resume">Resume this workout</button>`;
     h += `</div>`;
   }
   if (list.length > ui.histN) h += `<button class="btn block" data-act="hist-more">Show older (${list.length - ui.histN})</button>`;
@@ -952,7 +977,9 @@ document.addEventListener('click', e => {
         set.done = true;
       }
       commit(); break;
-    case 'finish': finishWorkout(); break;
+    case 'finish': confirmFinish(); break;
+    case 'finish-confirm': modal(null); finishWorkout(); break;
+    case 'resume': resumeWorkout(); break;
     case 'discard':
       if (!confirmTap(el, 'Tap again to discard')) break;
       data.sessions.splice(data.sessions.indexOf(cur), 1);

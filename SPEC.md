@@ -211,12 +211,21 @@ header and is also a tap target (§6).
   already in the workout are marked and cannot be selected again. Confirming
   appends the new selection.
 - "Finish workout" button:
+  - First asks "Finish workout?" in a dialog that says how many exercises and
+    sets are logged (or that the workout will be discarded if nothing is), with
+    "Keep training" and "Finish".
   - Drops set rows that are neither done nor have any value, then drops items
     left with no sets.
   - Sets `finished: true`, triggers a sync, and returns to Plan.
 - "Discard workout" (needs a confirmation tap) deletes the in-progress session.
 - **Everything autosaves** on every change. Closing the app mid-workout loses
   nothing.
+- **Resuming**: the most recent finished workout can be reopened, for example
+  after finishing it by mistake. Plan shows a "Resume today's workout" button
+  when that workout is dated today, and History offers it on the newest card.
+  Resuming sets `finished: false` and marks all its sets as done; the date stays
+  as it was. Only the most recent workout can be resumed, and only while none
+  is in progress.
 
 ### 4.3 Exercises
 
@@ -253,6 +262,8 @@ header and is also a tap target (§6).
   that exercise).
 - Archived or unknown exercises still show (unknown ids show the raw id).
 - The 30 most recent matching sessions are shown, with a "Show older" button.
+- The newest workout, when expanded, has a "Resume this workout" button
+  (only while no workout is in progress). See "Resuming" below.
 - Editing and deleting stay in `gym.json` (§5).
 
 ### 4.5 Settings
