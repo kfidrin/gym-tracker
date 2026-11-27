@@ -239,7 +239,7 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 <script>
 'use strict';
 const GOOGLE_CLIENT_ID = '239433349999-cdptvbltd2saropujjum62m48tj5pcor.apps.googleusercontent.com';
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.7.2';
 
 const GROUPS = [
   ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
@@ -393,8 +393,9 @@ function statusOf(ex, st) {
 // Background for the "sessions since" pill: light green for the last session, through yellow and orange,
 // to bright red at 4 or more sessions ago. Text stays dark except on the full red.
 function sinceColor(st) {
-  const k = Math.min(st.since, 4) / 4, mix = (a, b) => a + (b - a) * k;
-  return `background: hsl(${mix(120, 0)}, ${mix(55, 85)}%, ${mix(85, 45)}%); color: ${k === 1 ? '#fff' : '#1b1f24'}`;
+  const n = Math.min(st.since, 4), k = n / 4, mix = (a, b) => a + (b - a) * k;
+  const hue = [120, 60, 42, 25, 0][n]; // green, yellow, amber, orange, red
+  return `background: hsl(${hue}, ${mix(55, 85)}%, ${mix(85, 45)}%); color: ${k === 1 ? '#fff' : '#1b1f24'}`;
 }
 const sinceLabel = st => !st ? 'never' : st.since === 0 ? 'last session' : st.since === 1 ? '1 session ago' : `${st.since} sessions ago`;
 const visibleIds = g => g.exercises.filter(id => { const e = exById(id); return e && !e.archived; });
