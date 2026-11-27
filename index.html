@@ -15,7 +15,7 @@
   --bg: #f6f7f9; --card: #ffffff; --text: #1b1f24; --muted: #6b7280; --line: #dfe3e8;
   --accent: #2563eb; --accent-text: #ffffff; --accent-soft: #dbe7ff;
   --due: #c62828; --due-soft: #fde8e7; --soon: #a35a00; --soon-soft: #fff1d1;
-  --done-soft: #e3f5e8; --ok: #15803d;
+  --done-soft: #e3f5e8; --ok: #15803d; --never-bg: #e5e7eb; --never-text: #4b5563;
   --tabh: 60px;
 }
 @media (prefers-color-scheme: dark) {
@@ -23,7 +23,7 @@
     --bg: #0f1115; --card: #191c22; --text: #e8eaed; --muted: #9aa0a6; --line: #2e333b;
     --accent: #6ea8ff; --accent-text: #0b1220; --accent-soft: #1d2b45;
     --due: #ff7b72; --due-soft: #3b1e1e; --soon: #f2b33d; --soon-soft: #3a2c12;
-    --done-soft: #16301f; --ok: #4ade80;
+    --done-soft: #16301f; --ok: #4ade80; --never-bg: #343941; --never-text: #c4c8ce;
   }
 }
 * { box-sizing: border-box; }
@@ -105,6 +105,8 @@ h2 { font-size: 15px; margin: 20px 0 8px; display: flex; justify-content: space-
 .ex .meta { display: block; font-size: 13px; color: var(--muted); }
 .ex.never .name { color: var(--muted); font-weight: 500; }
 .ex.due { border-left-color: var(--due); }
+.since { display: inline-block; padding: 0 8px; border-radius: 10px; line-height: 20px; }
+.since.never { background: var(--never-bg); color: var(--never-text); }
 .ex.due .since { color: var(--due); font-weight: 700; }
 .ex.soon { border-left-color: var(--soon); }
 .ex.soon .since { color: var(--soon); font-weight: 700; }
@@ -237,7 +239,7 @@ details.arch summary { cursor: pointer; font-weight: 600; padding: 12px 0; }
 <script>
 'use strict';
 const GOOGLE_CLIENT_ID = '239433349999-cdptvbltd2saropujjum62m48tj5pcor.apps.googleusercontent.com';
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 
 const GROUPS = [
   ['shoulders', 'Shoulders'], ['chest', 'Chest'], ['back', 'Back'], ['legs', 'Legs'],
@@ -387,6 +389,12 @@ function statusOf(ex, st) {
   if (st.since >= ex.maxSkip) return 'due';
   if (st.since === ex.maxSkip - 1) return 'soon';
   return 'ok';
+}
+// Background for the "sessions since" pill: light green for the last session, through yellow and orange,
+// to bright red at 4 or more sessions ago. Text stays dark except on the full red.
+function sinceColor(st) {
+  const k = Math.min(st.since, 4) / 4, mix = (a, b) => a + (b - a) * k;
+  return `background: hsl(${mix(120, 0)}, ${mix(55, 85)}%, ${mix(85, 45)}%); color: ${k === 1 ? '#fff' : '#1b1f24'}`;
 }
 const sinceLabel = st => !st ? 'never' : st.since === 0 ? 'last session' : st.since === 1 ? '1 session ago' : `${st.since} sessions ago`;
 const visibleIds = g => g.exercises.filter(id => { const e = exById(id); return e && !e.archived; });
@@ -540,7 +548,7 @@ function renderPlan(main) {
     for (const id of ids) {
       const ex = exById(id), s = st[id], status = statusOf(ex, s), inW = inWorkout.has(id);
       const also = data.groups.filter(o => o !== g && o.exercises.includes(id)).map(o => o.name).join(', ');
-      const meta = [`<span class="since">${sinceLabel(s)}</span>`];
+      const meta = [s ? `<span class="since" style="${sinceColor(s)}">${sinceLabel(s)}</span>` : `<span class="since never">never</span>`];
       if (ex.maxSkip != null) meta.push(`max ${ex.maxSkip}`);
       if (also) meta.push(`also ${esc(also)}`);
       if (inW) meta.push('in workout');
